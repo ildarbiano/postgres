@@ -1,0 +1,15 @@
+-- Users
+
+CREATE USER test;
+-- зададим пароль, без него не пустит
+
+\password test
+-- или
+
+ALTER USER test PASSWORD 'test$123';
+-- Зайти в psql под вновь созданным пользователем
+
+sudo -u postgres psql -U test -h 127.0.0.1 -d postgres -W
+-- Попробовать получить доступ к ранее созданной таблице
+
+SELECT * FROM test;

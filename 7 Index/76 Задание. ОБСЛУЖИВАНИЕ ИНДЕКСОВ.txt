@@ -1,0 +1,44 @@
+-- Создать таблицу из 100 000 строк
+
+CREATE TABLE testi (
+    a   int,
+    b   int
+);
+
+INSERT INTO testi SELECT i/100, i/500
+                 FROM generate_series(1,100000) s(i);
+ 
+
+-- Создать индекс по любому полю
+
+CREATE INDEX testidx ON testi(a);
+ 
+
+--Создать расширение pgstattuple
+
+CREATE EXTENSION pgstattuple;
+ 
+
+-- Посмотреть размер индекса
+
+SELECT * FROM pgstatindex('testidx') \gx
+ 
+
+-- Обновить все строки
+
+UPDATE testi SET a = a + 1;
+ 
+
+-- Посмотреть размер индекса
+
+SELECT * FROM pgstatindex('testidx') \gx
+ 
+
+-- Перестроить индекс
+
+REINDEX INDEX CONCURRENTLY testidx;
+ 
+
+-- Убедиться, что индекс вернулся к первоначальному размеру
+
+SELECT * FROM pgstatindex('testidx') \gx

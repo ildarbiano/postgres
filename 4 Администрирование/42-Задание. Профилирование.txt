@@ -1,0 +1,12 @@
+-- Включить профилирование всех запросов
+
+alter system set log_min_duration_statement = 0;
+-- Перезагрузить конфигурацию
+
+select pg_reload_conf();
+-- Сделать любой запрос
+
+select * from test;
+-- Найти запрос в логах
+
+tail /var/log/postgresql/postgresql-14-main.log

@@ -1,0 +1,152 @@
+create table test_74 as 
+select generate_series as id
+  , substr('abcdefghijklmnopqrstuvwxyz',1,(random()*26)::integer)::text as col2 		-- 
+from generate_series(1, 100000);
+
+--CREATE INDEX idx ON test USING GIN (to_tsvector('english',col2));
+
+explain
+select * from test_74 where to_tsvector(col2) @@ to_tsquery('abs');				-- to_tsvector(col2) Преобразует текст из колонки col2 в специальную структуру данных "текстовый вектор". Разбивает текст на лексемы (слова в нормализованной форме). Удаляет стоп-слова (артикли, предлоги: "и", "в", "на", "the", "a"). Запоминает позиции слов в тексте. Приводит слова к нормальной форме (лемматизация):
+	"бежал", "бежит", "бежать" → "бежать"
+	"собаки", "собака" → "собака"
+												-- to_tsquery('abs') Преобразует поисковый запрос в специальный формат. Поддерживает операторы: & (И), | (ИЛИ), ! (НЕ). Также нормализует слова.
+--explain
+--select * from test where to_tsvector('english',col2) @@ to_tsquery('abs');
+
+==================================================================
+postgres=# create table test_74 as
+select generate_series as id
+  , substr('abcdefghijklmnopqrstuvwxyz',1,(random()*26)::integer)::text as col2
+from generate_series(1, 50000);									-- надо было 100'000
+SELECT 50000
+
+postgres=# SELECT COUNT(*) FROM test_74;
+ count
+-------
+ 50000
+(1 row)
+
+
+postgres=# SELECT * FROM test_74 LIMIT 5;
+ id |           col2
+----+---------------------------
+  1 | abcdefghijklmn
+  2 | abc
+  3 | abcdefgh
+  4 | abcdefghijklmnop
+  5 | abcdefghijklmnopqrstuvwxy
+(5 rows)
+
+postgres=# explain
+select * from test_74 where to_tsvector(col2) @@ to_tsquery('abs');				-- выводит план выполнения SQL-запроса, генерируемый планировщиком для заданного оператора.
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_74  (cost=0.00..25928.00 rows=250 width=17)
+   Filter: (to_tsvector(col2) @@ to_tsquery('abs'::text))
+(2 rows)
+
+postgres=# SELECT indexname, indexdef								-- 
+FROM pg_indexes
+WHERE tablename = 'test_74';
+ indexname | indexdef
+-----------+----------
+(0 rows)
+
+postgres=# SELECT COUNT(*)									-- COUNT — это функция, ей нужны скобки: COUNT(*) или COUNT(column)
+FROM test_74
+WHERE to_tsvector(col2) @@ to_tsquery('abs');							-- подсчитать все строки где есть 'abs'
+ count
+-------
+  1963
+(1 row)
+
+postgres=# SELECT COUNT(id)
+FROM test_74
+WHERE to_tsvector(col2) @@ to_tsquery('abs');							-- подсчитать строки, где колонка не NULL
+ count
+-------
+  1963
+(1 row)
+
+postgres=# SELECT COUNT(*) as abs_count
+FROM test_74
+WHERE to_tsvector(col2) @@ to_tsquery('abs');							-- 
+ abs_count
+-----------
+      1963
+(1 row)
+
+
+postgres=# CREATE INDEX idx_search_abs_1 ON postgres.test_74 USING GIN (to_tsquery('english', 'col2'));
+ERROR:  data type tsquery has no default operator class for access method "gin"
+HINT:  You must specify an operator class for the index or define a default operator class for the data type.
+postgres=# CREATE INDEX idx_search_abs_1 ON postgres.test_74 USING GIN (to_tsvector('english', 'col2'));
+												-- 'col2' в кавычках — это строка 'col2', а не имя столбца! Индекс будет создан для постоянной строки 'col2', а не для значений колонки col2. Все строки в индексе будут одинаковые: to_tsvector('english', 'col2'). В SQL без кавычек = имя столбца, в кавычках = строковая константа!
+CREATE INDEX
+
+postgres=# drop index idx_search_abs_1;
+DROP INDEX
+
+postgres=# CREATE INDEX idx_search_abs ON postgres.test_74 
+USING GIN (to_tsvector('english', col2));
+CREATE INDEX
+
+postgres=# drop index idx_search_abs;
+DROP INDEX
+postgres=# EXPLAIN 
+SELECT * FROM test_74
+WHERE to_tsvector('english', col2) @@ to_tsquery('english', 'abs');				-- БЕЗ индекса
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on test_74  (cost=0.00..13428.00 rows=250 width=17)
+   Filter: (to_tsvector('english'::regconfig, col2) @@ '''ab'''::tsquery)
+(2 rows)
+
+postgres=# CREATE INDEX idx_search_abs ON postgres.test_74 USING GIN (to_tsvector('english', col2));
+CREATE INDEX											-- 
+
+postgres=# EXPLAIN 
+SELECT * FROM test_74
+WHERE to_tsvector('english', col2) @@ to_tsquery('english', 'abs');				-- С индексом
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Bitmap Heap Scan on test_74  (cost=9.94..377.72 rows=250 width=17)
+   Recheck Cond: (to_tsvector('english'::regconfig, col2) @@ '''ab'''::tsquery)
+   ->  Bitmap Index Scan on idx_search_abs  (cost=0.00..9.88 rows=250 width=0)
+         Index Cond: (to_tsvector('english'::regconfig, col2) @@ '''ab'''::tsquery)
+(4 rows)
+
+==============================================
+postgres=# \d test_74
+             Table "postgres.test_74"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           |          |
+ col2   | text    |           |          |
+Indexes:
+    "idx_gin_composite" gin (to_tsvector('english'::regconfig, col2), to_tsvector('english'::regconfig, col2))
+    "idx_search_abs" gin (to_tsvector('english'::regconfig, col2))
+
+postgres=# drop index idx_search_abs;
+DROP INDEX
+postgres=# \d test_74
+             Table "postgres.test_74"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           |          |
+ col2   | text    |           |          |
+Indexes:
+    "idx_gin_composite" gin (to_tsvector('english'::regconfig, col2), to_tsvector('english'::regconfig, col2))
+
+postgres=# CREATE INDEX idx_gin_simple ON postgres.test_74 USING GIN (to_tsvector('english', col2));
+CREATE INDEX
+postgres=# \d test_74
+             Table "postgres.test_74"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           |          |
+ col2   | text    |           |          |
+Indexes:
+    "idx_gin_composite" gin (to_tsvector('english'::regconfig, col2), to_tsvector('english'::regconfig, col2))
+    "idx_gin_simple" gin (to_tsvector('english'::regconfig, col2))
+

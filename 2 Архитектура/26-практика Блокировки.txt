@@ -1,0 +1,221 @@
+postgres=# SELECT * FROM pg_locks \gx				-- какие есть сейчас блокировки
+-[ RECORD 1 ]------+----------------
+locktype           | relation
+database           | 13759
+relation           | 12290
+page               |
+tuple              |
+virtualxid         |
+transactionid      |
+classid            |
+objid              |
+objsubid           |
+virtualtransaction | 3/10
+pid                | 846
+mode               | AccessShareLock
+granted            | t
+fastpath           | t
+waitstart          |
+-[ RECORD 2 ]------+----------------
+locktype           | virtualxid
+database           |
+relation           |
+page               |
+tuple              |
+virtualxid         | 3/10
+transactionid      |
+classid            |
+objid              |
+objsubid           |
+virtualtransaction | 3/10
+pid                | 846
+mode               | ExclusiveLock
+granted            | t
+fastpath           | t
+waitstart          |
+
+postgres=# SELECT pg_backend_pid();				-- кто блокирует тот или иной процесс
+ pg_backend_pid
+----------------
+            846							-- ID procces, PID. ID нашей сессии.
+(1 row)
+postgres=# SELECT pg_blocking_pids(846);			-- посмотреть кто блокирует по PID
+ pg_blocking_pids
+------------------
+ {}
+(1 row)
+
+postgres=# SHOW log_lock_waits;					-- настройка записи блокировки в лог после определенного времени. Ьудет записывать все процессы.
+ log_lock_waits
+----------------
+ off								-- выключен
+(1 row)
+
+
+
+==================================посмотрим различные виды блокировок и как найти, кто нас блокирует. 
+---------------------------------- Для это мы будет работать из 2 параллельных терминалов и, соответственно, сессий
+postgres=# DROP TABLE IF EXISTS accounts;			-- очистить или убедиться
+NOTICE:  table "accounts" does not exist, skipping
+DROP TABLE
+
+CREATE TABLE accounts(id integer, amount numeric);		-- создать таблицу
+postgres=# CREATE TABLE accounts(id integer, amount numeric);
+CREATE TABLE
+postgres=# INSERT INTO accounts VALUES (1,2000.00), (2,2000.00), (3,2000.00);
+INSERT 0 3
+
+----------------------------------- во втором окне
+postgres=# BEGIN;						--
+BEGIN
+postgres=*# SELECT pg_backend_pid();				--
+ pg_backend_pid
+----------------
+            902
+(1 row)
+
+postgres=*# SELECT locktype, relation::REGCLASS, virtualxid AS virtxid, transactionid AS xid, mode, granted FROM pg_locks WHERE pid = 902;
+  locktype  | relation | virtxid | xid |      mode       | granted
+------------+----------+---------+-----+-----------------+---------
+ relation   | pg_locks |         |     | AccessShareLock | t	-- для pg_locks
+ virtualxid |          | 4/66    |     | ExclusiveLock   | t	-- эксклюзивная блокировка на virtualxid
+(2 rows)						   t	-- означает true, что блокировка установлена
+							   f	-- означает false, блокировка ожидается.
+
+postgres=*# UPDATE accounts SET amount = amount + 1 WHERE id = 1;
+								-- модификация таблицы
+UPDATE 1
+postgres=*# SELECT pg_backend_pid();
+ pg_backend_pid
+----------------
+            902
+(1 row)
+
+postgres=*# SELECT locktype, relation::REGCLASS, virtualxid AS virtxid, transactionid AS xid, mode, granted FROM pg_locks WHERE pid = 902;
+								-- смотрим опять блокировки - что изменилось и почему?
+   locktype    | relation | virtxid | xid |       mode       | granted
+---------------+----------+---------+-----+------------------+---------
+ relation      | accounts |         |     | RowExclusiveLock | t	-- блокировка на account, эксклюзивная блокировка на строку
+ relation      | pg_locks |         |     | AccessShareLock  | t
+ virtualxid    |          | 4/66    |     | ExclusiveLock    | t
+ transactionid |          |         | 760 | ExclusiveLock    | t	-- блокировка на transaction, до завершения текущей транзакции
+(4 rows)
+
+
+
+
+------------------------------------------ в первом терминале 1 ----------------------------
+postgres=# SELECT pg_backend_pid();					--
+ pg_backend_pid
+----------------
+           5623
+(1 row)
+
+postgres=# CREATE INDEX ON accounts(id);				-- создать индекс не получится, потому как требуются эксклюзивные права.
+создаться после commit транзакции, блокирующей.				-- индекс - это структура данных, которая помогает ускорить поиск данных. в данном случае ON accounts(id) индекс создаётся на id таблицы
+
+------------------------------------------ проверим во втором терминале 2 --------------------
+postgres=*# SELECT locktype, relation::REGCLASS, virtualxid AS virtxid, transactionid AS xid, mode, granted FROM pg_locks WHERE pid = 5623;
+  locktype  | relation | virtxid | xid |     mode      | granted
+------------+----------+---------+-----+---------------+---------
+ virtualxid |          | 3/32    |     | ExclusiveLock | t
+ relation   | accounts |         |     | ShareLock     | f		-- false. Ждёт, когда освободится virtualxid
+(2 rows)
+
+postgres=*# SELECT locktype, relation::REGCLASS, virtualxid AS virtxid, transactionid AS xid, mode, granted FROM pg_locks;
+									-- все блокировки
+   locktype    | relation | virtxid | xid |       mode       | granted
+---------------+----------+---------+-----+------------------+---------
+ relation      | pg_locks |         |     | AccessShareLock  | t
+ virtualxid    |          | 4/66    |     | ExclusiveLock    | t
+ virtualxid    |          | 3/32    |     | ExclusiveLock    | t
+ transactionid |          |         | 760 | ExclusiveLock    | t
+ relation      | accounts |         |     | RowExclusiveLock | t
+ relation      | accounts |         |     | ShareLock        | f
+(6 rows)
+
+
+---------------------------- узнаем, кто нас блокирует
+postgres=*# SELECT pg_blocking_pids(5623);				-- узнать кто блокирует терминал 1
+ pg_blocking_pids
+------------------
+ {902}									-- PID терминала 2
+(1 row)
+
+postgres=*# SELECT * FROM pg_stat_activity WHERE pid = ANY(pg_blocking_pids(5623)) \gx
+									-- что вообще происходит PG_STAT_ACTIVITY в терминале 1
+-[ RECORD 1 ]----+------------------------------------------------------------------------
+datid            | 13759
+datname          | postgres
+pid              | 902
+leader_pid       |
+usesysid         | 10
+usename          | postgres
+application_name | psql
+client_addr      |
+client_hostname  |
+client_port      | -1
+backend_start    | 2025-12-26 09:10:14.627808+00
+xact_start       | 2025-12-26 09:10:17.147204+00
+query_start      | 2025-12-26 09:45:41.038329+00
+state_change     | 2025-12-26 09:45:41.038333+00
+wait_event_type  |
+wait_event       |
+state            | active
+backend_xid      | 760
+backend_xmin     | 760
+query_id         |
+query            | SELECT * FROM pg_stat_activity WHERE pid = ANY(pg_blocking_pids(5623))
+backend_type     | client backend
+						  			-- ВСЕГДА МОЖНО УЗНАТЬ КТО БЛОКИРУЕТ НАС
+postgres=*# commit;
+COMMIT									-- LOCK-TIMEOUT
+-- https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-LOCK-TIMEOUT
+
+
+============================================= deadlock ==================================================
+--------------------------------------------- 1 terminal
+BEGIN;
+UPDATE accounts SET amount = amount + 1 WHERE id = 1;
+
+--------------------------------------------- 2 terminal
+BEGIN;
+UPDATE accounts SET amount = amount + 1 WHERE id = 2;
+
+--------------------------------------------- 1 terminal
+UPDATE accounts SET amount = amount + 1 WHERE id = 2;
+
+--------------------------------------------- 2 terminal
+postgres=*# UPDATE accounts SET amount = amount + 1 WHERE id = 1;
+ERROR:  deadlock detected
+DETAIL:  Process 902 waits for ShareLock on transaction 762; blocked by process                5623.
+Process 5623 waits for ShareLock on transaction 763; blocked by process 902.
+HINT:  See server log for query details.
+CONTEXT:  while updating tuple (0,4) in relation "accounts"		-- разрывается последняя транзакция, то есть которая вызвала deadlock
+
+
+============================================ логи через утилиту просмотра окончания лога кластера
+postgres=!# \q
+ilya@postgres:~$ tail /var/log/postgresql/postgresql-14-main.log
+2025-12-26 09:33:49.513 UTC [5623] postgres@postgres ERROR:  canceling statement due to user re                                            quest
+2025-12-26 09:33:49.513 UTC [5623] postgres@postgres STATEMENT:  CREATE INDEX ON accounts(id);
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres ERROR:  deadlock detected
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres DETAIL:  Process 902 waits for ShareLock on                                             transaction 762; blocked by process 5623.
+        Process 5623 waits for ShareLock on transaction 763; blocked by process 902.
+        Process 902: UPDATE accounts SET amount = amount + 1 WHERE id = 1;
+        Process 5623: UPDATE accounts SET amount = amount + 1 WHERE id = 2;
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres HINT:  See server log for query details.
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres CONTEXT:  while updating tuple (0,4) in rel                                            ation "accounts"
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres STATEMENT:  UPDATE accounts SET amount = am                                            ount + 1 WHERE id = 1;
+ilya@postgres:~$
+ilya@postgres:~$ tail /var/log/postgresql/postgresql-14-main.log
+2025-12-26 09:33:49.513 UTC [5623] postgres@postgres ERROR:  canceling statement due to user request
+2025-12-26 09:33:49.513 UTC [5623] postgres@postgres STATEMENT:  CREATE INDEX ON accounts(id);
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres ERROR:  deadlock detected
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres DETAIL:  Process 902 waits for ShareLock on transaction 762; blocked by process 5623.
+        Process 5623 waits for ShareLock on transaction 763; blocked by process 902.
+        Process 902: UPDATE accounts SET amount = amount + 1 WHERE id = 1;
+        Process 5623: UPDATE accounts SET amount = amount + 1 WHERE id = 2;
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres HINT:  See server log for query details.
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres CONTEXT:  while updating tuple (0,4) in relation "accounts"
+2025-12-26 09:58:44.283 UTC [902] postgres@postgres STATEMENT:  UPDATE accounts SET amount = amount + 1 WHERE id = 1;

@@ -1,0 +1,59 @@
+-- Создать секционированную таблицу с продажами по дате продажи помесячно (наименование продажи, дата продажи)
+
+DROP TABLE IF EXISTS sales;
+
+CREATE TABLE sales(name TEXT, salesdate timestamp)
+
+PARTITION BY RANGE (salesdate);
+  
+
+CREATE TABLE sales_y2006_y2022 PARTITION OF sales
+
+    FOR VALUES FROM ('2000-01-01') TO ('2022-06-01');
+ 
+
+CREATE TABLE sales_y2022_m06 PARTITION OF sales
+
+    FOR VALUES FROM ('2022-06-01') TO ('2022-07-01');
+  
+
+CREATE TABLE sales_y2022_m07 PARTITION OF sales
+
+    FOR VALUES FROM ('2022-07-01') TO ('2022-08-01');
+  
+
+CREATE TABLE sales_y2022_m08 PARTITION OF sales
+
+    FOR VALUES FROM ('2022-08-01') TO ('2022-09-01');
+  
+
+CREATE TABLE sales_y2022_y_2030 PARTITION OF sales
+
+    FOR VALUES FROM ('2022-09-01') TO ('2030-12-12');
+  
+
+-- Заполнить 5-10 строк
+
+INSERT INTO sales(name, salesdate) VALUES
+
+('banana','20220801'),
+
+('banana','20220701'),
+
+('grape','20220615'),
+
+('berry','20220805'),
+
+('banana','20220910');
+ 
+
+-- Выполнить запрос по дате и убедиться, что используется только 1 секция
+
+EXPLAIN SELECT * FROM sales WHERE salesdate = '2022-08-01';
+
+    QUERY PLAN                                 
+----------------------------------------------------------------------------
+
+Seq Scan on sales_y2022_m08 sales (cost=0.00..25.00 rows=6 width=40)
+
+Filter: (salesdate = '2022-08-01 00:00:00'::timestamp without time zone)

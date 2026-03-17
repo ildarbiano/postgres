@@ -1,0 +1,81 @@
+-- создадим таблицу c марками и моделями
+CREATE TABLE marka(
+  marka TEXT,
+  model TEXT
+);
+ 
+
+ -- добавим пару записей
+
+INSERT INTO marka(marka, model) VALUES ('BMW','X6'),('BMW','X7'),('AUDI', 'Q3'),('AUDI', 'Q5');
+ 
+
+-- посмотрим, что у нас добавилось
+
+SELECT * FROM marka;
+ 
+
+-- создадим таблицу c дилерами и телефонами
+
+CREATE TABLE dealer(
+  name TEXT,
+  phones TEXT
+);
+ 
+
+-- добавим пару записей
+
+INSERT INTO dealer(name, phones) VALUES ('BMW','8-800'),('MEGA','100-500'),('AUDI','7-700');
+ 
+
+-- посмотрим, что у нас добавилось
+
+SELECT * FROM dealer;
+ 
+
+-- создадим таблицу c марками и дилерами
+
+CREATE TABLE marka_dealer(
+  marka TEXT,
+  dealer TEXT
+);
+ 
+
+-- добавим пару записей
+
+INSERT INTO marka_dealer(marka, dealer) VALUES ('BMW','BMW'),('BMW','MEGA'),('AUDI','AUDI'),('AUDI','MEGA');
+ 
+
+-- посмотрим, что у нас добавилось
+
+SELECT * FROM marka_dealer;
+ 
+
+-- создадим таблицу c марками и скидками
+
+CREATE TABLE discount(
+  marka TEXT,
+  discount TEXT
+);
+ 
+
+-- добавим пару записей
+
+INSERT INTO discount(marka, discount) VALUES ('BMW','2'),('AUDI','3');
+ 
+
+-- посмотрим, что у нас добавилось
+
+SELECT * FROM discount;
+ 
+
+-- соберем вместе
+
+SELECT m.marka, m.model, d.name, d.phones, ds.discount
+FROM marka m
+JOIN marka_dealer md
+  ON m.marka = md.marka
+JOIN dealer d
+  ON md.dealer = d.name
+JOIN discount ds
+  ON m.marka = ds.marka;

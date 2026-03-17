@@ -1,0 +1,217 @@
+ilya@postgres:~$ sudo mkdir /home/1 && sudo chmod 777 /home/1
+[sudo] password for ilya:
+ilya@postgres:~$ cd ..
+ilya@postgres:/home$ ls -l
+total 8
+drwxrwxrwx  2 root root 4096 Jan 14 08:04 1
+drwxr-x--- 10 ilya ilya 4096 Jan 14 08:02 ilya
+
+ilya@postgres:/home$ sudo -u postgres psql
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# CREATE DATABASE backup;							-- создадим табличку для тестов
+CREATE DATABASE
+postgres=# \l										--
+                               List of databases
+    Name     |  Owner   | Encoding | Collate |  Ctype  |   Access privileges
+-------------+----------+----------+---------+---------+-----------------------
+ app         | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ backup      | postgres | UTF8     | C.UTF-8 | C.UTF-8 |				--
+ buffer_temp | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ index_test  | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ postgres    | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ template0   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+ template1   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+(7 rows)
+
+postgres=# \c backup									--
+You are now connected to database "backup" as user "postgres".
+backup=# SELECT current_database();							-- подсказка
+ current_database
+------------------
+ backup
+(1 row)
+
+ 
+backup=#
+CREATE TABLE test (i int, col text);
+INSERT INTO test VALUES (1, '123');
+INSERT INTO test VALUES (2, '456');
+INSERT INTO test VALUES (3, '789');
+CREATE TABLE
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+
+
+backup=# COPY test TO '/home/1/test.csv' CSV HEADER;					--скопируем данные. Создать логическую копию в формате CSV с выделением HEADER
+COPY 3
+ilya@postgres:~$
+cat /home/1/test.csv									-- 
+i,col
+1,123
+2,456
+3,789
+
+----------------------------------------------- восстановим данные в другую табличку
+COPY test2 FROM '/home/1/test.csv' CSV HEADER;
+----------------------------------------------- ошибка!!!
+----------------------------------------------- таблица должна быть создана заранее:
+
+backup=# 
+CREATE TABLE test2 (i int, col text);
+COPY test2 FROM '/home/1/test.csv' CSV HEADER;
+SELECT * FROM test2;
+CREATE TABLE
+COPY 3
+ i | col
+---+-----
+ 1 | 123
+ 2 | 456
+ 3 | 789
+(3 rows)
+
+ 
+
+------------------------------------------------ архивируем БД через консольную утилиту
+sudo -u postgres pg_dump -d backup --CREATE
+------------------------------------------------ опции для команды pg_dump должны быть в нижнем регистре
+
+ilya@postgres:~$ sudo -u postgres pg_dump -d backup --create > /home/1/1.sql		-- архивирование
+[sudo] password for ilya:
+could not change directory to "/home/ilya": Permission denied
+ilya@postgres:~$ cat /home/1/1.sql							--
+--
+-- PostgreSQL database dump
+--
+\restrict R8JpJsnqiwwga29l5VxEKhbYMymZRbLjylRcDrFkzAGScg85UFEUey9XcrsfgGt
+-- Dumped from database version 14.20 (Ubuntu 14.20-0ubuntu0.22.04.1)
+-- Dumped by pg_dump version 14.20 (Ubuntu 14.20-0ubuntu0.22.04.1)
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+--
+-- Name: backup; Type: DATABASE; Schema: -; Owner: postgres
+--
+CREATE DATABASE backup WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE = 'C.UTF-8';
+ALTER DATABASE backup OWNER TO postgres;
+\unrestrict R8JpJsnqiwwga29l5VxEKhbYMymZRbLjylRcDrFkzAGScg85UFEUey9XcrsfgGt
+\connect backup
+\restrict R8JpJsnqiwwga29l5VxEKhbYMymZRbLjylRcDrFkzAGScg85UFEUey9XcrsfgGt
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+SET default_tablespace = '';
+SET default_table_access_method = heap;
+--
+-- Name: test; Type: TABLE; Schema: public; Owner: postgres
+--
+CREATE TABLE public.test (
+    i integer,
+    col text
+);
+ALTER TABLE public.test OWNER TO postgres;
+--
+-- Name: test2; Type: TABLE; Schema: public; Owner: postgres
+--
+CREATE TABLE public.test2 (
+    i integer,
+    col text
+);
+ALTER TABLE public.test2 OWNER TO postgres;
+--
+-- Data for Name: test; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+COPY public.test (i, col) FROM stdin;
+1       123
+2       456
+3       789
+\.
+--
+-- Data for Name: test2; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+COPY public.test2 (i, col) FROM stdin;
+1       123
+2       456
+3       789
+\.
+--
+-- PostgreSQL database dump complete
+--
+\unrestrict R8JpJsnqiwwga29l5VxEKhbYMymZRbLjylRcDrFkzAGScg85UFEUey9XcrsfgGt
+
+
+ 
+
+============================================================ восстановим БД
+
+ilya@postgres:~$ sudo -u postgres psql < /home/1/1.sql
+ERROR:  database "backup" already exists
+ALTER DATABASE
+You are now connected to database "backup" as user "postgres".
+ERROR:  relation "test" already exists					--
+ALTER TABLE
+ERROR:  relation "test2" already exists					--
+ALTER TABLE
+COPY 3
+COPY 3
+
+sudo -u postgres psql
+\dt
+backup=# select * from test;
+ i | col
+---+-----
+ 1 | 123
+ 2 | 456
+ 3 | 789
+ 1 | 123								-- дубль после восстановления в существующую базу данных
+ 2 | 456								-- дубль после восстановления в существующую базу данных
+ 3 | 789								-- дубль после восстановления в существующую базу данных
+(6 rows)
+
+backup=# \c postgres
+You are now connected to database "postgres" as user "postgres".
+postgres=# DROP DATABASE backup;					--
+DROP DATABASE
+postgres=# CREATE DATABASE backup;					-- создаём. нужна пустая БД.
+CREATE DATABASE
+ilya@postgres:~$ sudo -u postgres psql < /home/1/1.sql			-- восстановление в пустую, новую БД.
+backup=# \dt								--
+         List of relations
+ Schema | Name  | Type  |  Owner
+--------+-------+-------+----------
+ public | test  | table | postgres
+ public | test2 | table | postgres
+(2 rows)
+
+backup=# select * from test;						-- без дублирования!
+ i | col
+---+-----
+ 1 | 123
+ 2 | 456
+ 3 | 789
+(3 rows)
+
+
+-- echo "drop DATABASE backup;" | sudo -u postgres psql
+-- echo "CREATE DATABASE backup;" | sudo -u postgres psql
+sudo -u postgres psql < /home/1/1.sql
+sudo -u postgres psql
+\dt

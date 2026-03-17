@@ -1,0 +1,42 @@
+Оптимизация Приложения Postgres для ситуаций когда: 	-приложение "тормозит".
+Оптимизация Приложения Postgres для оптимизации запросов к приложению.
+Оптимизация Приложения Postgres для поиска узких мест.
+
+============================= Мониторинг:
+Пути решения:
+- Prometheus exporter + Grafana
+- https://okmeter.io/
+- https://www.zabbix.com/ru - обычно мониторим железо, но можно и Постгрес 
+- Percona monitoring and management (PMM)
+
+Что ещё:
+pgHero
+https://habr.com/ru/company/domclick/blog/546910/
+pgWatch2
+https://github.com/cybertec-postgresql/pgwatch2
+
+
+============================= Профилирование запросов
+- для остальных запросов используется журнал сообщений сервера
+- log_min_duration_statements = 0 — время и текст всех запросов, при увеличении порога срабатывания - только “толстые” запросы
+- log_line_prefix — идентифицирующая информация
+- включается для всего сервера
+- большой объем
+- расширение pl/pgsql  https://github.com/bigsql/plprofiler
+- расширение auto_explain -для отслеживания вложенных запросов можно использовать 
+- анализ внешними средствами, например pgBadger
+
+
+------- Инструменты профилирования запросов ----------
+Что ещё:
+pg_profile https://github.com/zubkov-andrei/pg_profile 
+Анализ исторической нагрузки PostgreSQL 
+
+PoWA (PostgreSQL Workload Analyzer)
+https://powa.readthedocs.io/en/latest/
+
+PoWA like
+https://habr.com/ru/post/345370/
+
+pgFouine
+https://highload.today/profilirovanie-v-postgresql/

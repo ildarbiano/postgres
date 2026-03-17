@@ -1,0 +1,100 @@
+--------------------------- Терминал_1:
+postgres=# CREATE TABLE test_a(i int);						--
+CREATE TABLE
+postgres=# \dt									--
+            List of relations
+  Schema  |   Name    | Type  |  Owner
+----------+-----------+-------+----------
+ postgres | monit     | table | postgres
+ postgres | t1        | table | postgres
+ postgres | test5     | table | postgres
+ postgres | test_a    | table | postgres
+ public   | accounts  | table | postgres
+ public   | persons   | table | postgres
+ public   | t1_public | table | postgres
+ public   | t2        | table | postgres
+ public   | test      | table | postgres
+ public   | test_text | table | postgres
+(10 rows)
+
+postgres=# INSERT INTO test_a values (333), (444);				--
+INSERT 0 2
+postgres=# select * from test_a;						--
+  i
+-----
+ 333
+ 444
+(2 rows)
+
+postgres=# ALTER TABLE postgres.test_a SET SCHEMA public;			-- переместим таблицу "test_a" в схему "public" для её доступности пользователю 'test'
+ALTER TABLE
+
+
+--------------------------- Терминал_2: 
+ilya@postgres:~$ psql -U test -h 127.0.0.1 -d postgres -W			--
+Password:
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+postgres=> SELECT * FROM postgres.test_a;					-- нет таблица, потому как мы смотрим в схеме "public", а "test_a" создана в схеме "postgres"
+ERROR:  permission denied for schema postgres
+LINE 1: SELECT * FROM postgres.test_a;
+
+postgres=> \dt									-- нет таблица, потому как мы смотрим в схеме "public", а "test_a" создана в схеме "postgres"
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1_public | table | postgres
+ public | t2        | table | postgres
+ public | test      | table | postgres
+ public | test_text | table | postgres
+(6 rows)
+
+postgres=> \dt									-- после ALTER TABLE postgres.test_a SET SCHEMA public;
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1_public | table | postgres
+ public | t2        | table | postgres
+ public | test      | table | postgres
+ public | test_a    | table | postgres
+ public | test_text | table | postgres
+(7 rows)
+
+postgres=> SELECT * FROM test_a;
+ERROR:  permission denied for table test_a
+
+--------------------------- Терминал_1:
+postgres=# GRANT SELECT, UPDATE, INSERT ON test_a TO test;			-- выдадим права на эту таблицу юзеру test
+GRANT
+postgres=# \dp test_a								-- какие права есть у таблицы
+                                 Access privileges
+ Schema |  Name  | Type  |     Access privileges     | Column privileges | Policies
+--------+--------+-------+---------------------------+-------------------+----------
+ public | test_a | table | postgres=arwdDxt/postgres+|                   |	-- схема public, после изменения её ALTER TABLE postgres.test_a SET SCHEMA public; для этой таблицы
+        |        |       | test=arw/postgres         |                   |
+(1 row)
+
+
+
+--------------------------- Терминал_2:
+postgres=> SELECT * FROM test_a;						-- после GRANT SELECT, UPDATE, INSERT ON test_a TO test;
+  i
+-----
+ 333
+ 444
+(2 rows)
+ 
+CREATE TABLE testb(i int);							-- протеструем дефолтные права на общую схему "public". Права есть по-умолчаний на схему 'public'
+INSERT INTO testb values (333), (444);
+SELECT * from testb;
+ 
+--------------------------- Терминал_1:
+REVOKE SELECT, UPDATE, INSERT ON testb FROM test;				-- отзовем права
+--------------------------- Терминал_2:
+SELECT * from testb;

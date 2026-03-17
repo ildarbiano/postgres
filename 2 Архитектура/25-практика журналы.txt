@@ -1,0 +1,56 @@
+-------------WAL-----------------
+\c buffer_temp								--
+
+buffer_temp=# SELECT * FROM pg_ls_waldir() LIMIT 10;			--смотреть wal dir 	
+           name           |   size   |      modification
+--------------------------+----------+------------------------
+ 000000010000000000000001 | 16777216 | 2025-12-25 12:09:46+00		--дата и время их создания
+(1 row)									--журнальный файл по 16ГБ
+
+buffer_temp=# CREATE EXTENSION pageinspect;				--получить доступ к содержимому журналов
+CREATE EXTENSION
+buffer_temp=# BEGIN;							--начать транзакцию
+BEGIN
+buffer_temp=*# SELECT pg_current_wal_insert_lsn();			-- запрос текущей позиции lsn
+ pg_current_wal_insert_lsn
+---------------------------
+ 0/18B91D0								-- текущая позиция lsn (18B91D0)
+(1 row)
+buffer_temp=*# SELECT pg_walfile_name('0/18B91D0');			-- посмотрим какой у нас wal file	
+     pg_walfile_name
+--------------------------
+ 000000010000000000000001						--wal file относится к файлу name в wal dir
+(1 row)
+buffer_temp=*# SELECT lsn FROM page_header(get_raw_page('test_text',0));-- узнать номер транзакции lsn для страницы
+    lsn
+-----------
+ 0/1853BF8								--номер транзакции, внесшей изменения в lsn
+(1 row)
+buffer_temp=*# commit;							--фиксация транзакции
+COMMIT
+buffer_temp=# UPDATE test_text set t = '1' WHERE t = 'строка 1';	--обновили одну строчку
+UPDATE 1
+buffer_temp=*# SELECT pg_current_wal_insert_lsn();			--запрос текущей позиции lsn
+ pg_current_wal_insert_lsn
+---------------------------
+ 0/18BF540								--после UPDATE номер lsn изменился. Был 18B91D0, стал 18BF540
+(1 row)
+buffer_temp=# SELECT lsn FROM page_header(get_raw_page('test_text',0));	--узнать номер транзакции lsn для страницы
+    lsn
+-----------
+ 0/18BF4E0								--был 1853BF8, а стал 18BF4E0
+(1 row)
+buffer_temp=# SELECT '0/18BF4E0'::pg_lsn - '0/1853BF8'::pg_lsn;		--сколько операций записалось в журнал за время между двумя lsn
+ ?column?
+----------
+   440552								--количество 440552 операция, записал Postgres между двумя lsn
+(1 row)
+
+------------------------------- другой терминал
+------------------------------- утилита pg_waldump покажет, что содержит WAL журнал------------------------------------
+------------------------------- позволяет восстановить картину последовательностей до момента сбоя --------------------
+ilya@postgres:~$ sudo su postgres
+[sudo] password for ilya:
+postgres@postgres:/home/ilya$
+/usr/lib/postgresql/14/bin/pg_waldump -p /var/lib/postgresql/14/main/pg_wal -s 0/1853BF8 -e 0/18BF4E0 000000010000000000000001
+

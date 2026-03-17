@@ -1,0 +1,133 @@
+================================================= пересоздание tablespace:
+postgres@postgres:~/14/main$ mkdir /var/lib/postgresql/temp_tblspce
+postgres@postgres:~$ ls -la
+total 48
+drwxr-xr-x  4 postgres postgres  4096 Dec 27 15:30 .
+drwxr-xr-x 30 root     root      4096 Dec 15 09:00 ..
+-rw-------  1 postgres postgres   539 Dec 27 15:19 .bash_history
+-rw-------  1 postgres postgres    20 Dec 27 15:26 .lesshst
+-rw-------  1 postgres postgres 17039 Dec 27 15:10 .psql_history
+drwxr-xr-x  3 postgres postgres  4096 Dec 15 11:15 14
+drwxrwxr-x  2 postgres postgres  4096 Dec 27 15:30 temp_tblspce			-- создан каталог временного tablespace
+
+postgres=# CREATE TABLESPACE ts location '/var/lib/postgresql/temp_tblspce';	--
+CREATE TABLESPACE								-- !!!!!! предупреждения нет !!!!!!!
+postgres=# CREATE DATABASE app TABLESPACE ts;					-- 
+CREATE DATABASE
+postgres=# \db									--
+                   List of tablespaces
+    Name    |  Owner   |             Location
+------------+----------+----------------------------------
+ pg_default | postgres |
+ pg_global  | postgres |
+ ts         | postgres | /var/lib/postgresql/temp_tblspce
+(3 rows)
+postgres@postgres:~/14/main/pg_tblspc$ ls
+16636										-- физическое место tablespace. OID tablespace
+postgres@postgres:~/14/main/pg_tblspc/16636$ ls
+PG_14_202107181									-- внутреннее имя tablespace
+postgres@postgres:~/14/main/pg_tblspc/16636/PG_14_202107181$ ls
+16637										-- DataBase OID
+postgres@postgres:~/14/main/pg_tblspc/16636/PG_14_202107181$ cd 16637/
+postgres@postgres:~/14/main/pg_tblspc/16636/PG_14_202107181/16637$ ls		-- system tables of DB "app" for tablespace "ts"
+112        13586      2600_fsm  2608_vm   2618_vm   2668      2693      2837      3350      3502      3603      4150  5002
+113        13587      2600_vm   2609      2619      2669      2696      2838      3351      3503      3603_fsm  4151  548
+1247       13587_fsm  2601      2609_fsm  2619_fsm  2670      2699      2838_fsm  3379      3534      3603_vm   4152  549
+1247_fsm   13587_vm   2601_fsm  2609_vm   2619_vm   2673      2701      2838_vm   3380      3541      3604      4153  6102
+1247_vm    13590      2601_vm   2610      2620      2673_fsm  2702      2839      3381      3541_fsm  3605      4154  6104
+1249       13591      2602      2610_fsm  2650      2674      2703      2840      3394      3541_vm   3606      4155  6106
+1249_fsm   13592      2602_fsm  2610_vm   2651      2674_fsm  2704      2840_fsm  3394_fsm  3542      3607      4156  6110
+1249_vm    13592_fsm  2602_vm   2611      2652      2675      2753      2840_vm   3394_vm   3574      3608      4157  6111
+1255       13592_vm   2603      2612      2653      2678      2753_fsm  2841      3395      3575      3609      4158  6112
+1255_fsm   13595      2603_fsm  2612_fsm  2654      2679      2753_vm   2995      3429      3576      3712      4159  6113
+1255_vm    13596      2603_vm   2612_vm   2655      2680      2754      2996      3430      3596      3764      4160  6117
+1259       1417       2604      2613      2656      2681      2755      3079      3431      3597      3764_fsm  4163  6175
+1259_fsm   1418       2605      2615      2657      2682      2756      3079_fsm  3433      3598      3764_vm   4164  6176
+1259_vm    174        2605_fsm  2615_fsm  2658      2683      2757      3079_vm   3439      3599      3766      4165  826
+13577      175        2605_vm   2615_vm   2659      2684      2830      3080      3440      3600      3767      4166  827
+13577_fsm  2187       2606      2616      2660      2685      2831      3081      3455      3600_fsm  3997      4167  828
+13577_vm   2224       2606_fsm  2616_fsm  2661      2686      2832      3085      3456      3600_vm   4143      4168  PG_VERSION
+13580      2228       2606_vm   2616_vm   2662      2687      2833      3118      3456_fsm  3601      4144      4169  pg_filenode.map
+13581      2328       2607      2617      2663      2688      2834      3119      3456_vm   3601_fsm  4145      4170  pg_internal.init
+13582      2336       2607_fsm  2617_fsm  2664      2689      2835      3164      3466      3601_vm   4146      4171
+13582_fsm  2337       2607_vm   2617_vm   2665      2690      2836      3256      3467      3602      4147      4172
+13582_vm   2579       2608      2618      2666      2691      2836_fsm  3257      3468      3602_fsm  4148      4173
+13585      2600       2608_fsm  2618_fsm  2667      2692      2836_vm   3258      3501      3602_vm   4149      4174
+
+postgres=# \c app								--
+You are now connected to database "app" as user "postgres".
+app=# CREATE TABLE test (i int);						--
+CREATE TABLE
+app=# SELECT tablename, tablespace FROM pg_tables WHERE schemaname = 'public';
+ tablename | tablespace
+-----------+------------
+ test2     | pg_default
+ test      | pg_default
+ table2    | pg_default
+(3 rows)
+
+app=# CREATE TABLE test2 (i int) TABLESPACE pg_default;				-- 
+CREATE TABLE
+app=# SELECT tablename, tablespace FROM pg_tables WHERE schemaname = 'public';	-- 
+ tablename | tablespace
+-----------+------------
+ test      |									-- так сделано ?, что текущее namespace, для текущей базы - не будет показано 
+ test2     | pg_default
+(2 rows)
+app=# ALTER TABLE test set TABLESPACE pg_default;				--физический перенос таблицы в другое tablespace. Может занять много времени!!!
+ALTER TABLE									-- ALTER {OBJECT_TYPE} {OBJECT_NAME} {ACTION};
+											Где:
+											ALTER 		— ключевое слово (глагол) "изменить"
+											OBJECT_TYPE 	— тип объекта (TABLE, INDEX, SEQUENCE, DATABASE, etc.)
+											OBJECT_NAME 	— имя объекта
+											ACTION 		— что сделать (ADD COLUMN, SET TABLESPACE, RENAME TO)
+app=# SELECT tablename, tablespace FROM pg_tables WHERE schemaname = 'public';
+ tablename | tablespace
+-----------+------------
+ test2     | pg_default
+ test      | pg_default
+(2 rows)
+app=# SELECT oid, spcname FROM pg_tablespace;					 -- oid унимальный номер, по которому можем узнать где физически находится.
+  oid  |  spcname
+-------+------------
+  1663 | pg_default
+  1664 | pg_global
+ 16636 | ts									-- /var/lib/postgresql/14/main/pg_tblspc/16636
+(3 rows)
+app=# SELECT oid, datname, dattablespace FROM pg_database;			-- узнать где физически находится и связь oid DB и oid tablespace
+  oid  |   datname   | dattablespace
+-------+-------------+---------------
+ 13759 | postgres    |          1663
+ 16519 | buffer_temp |          1663
+     1 | template1   |          1663
+ 13758 | template0   |          1663
+ 16637 | app         |         16636						-- /var/lib/postgresql/14/main/pg_tblspc/16636/PG_14_202107181/16637
+
+app=# SELECT pg_relation_filepath('test2');					-- посмотреть, где  физически лежит таблица
+ pg_relation_filepath
+----------------------
+ base/16637/16641
+(1 row)										-- postgres@postgres:~/14/main/base$ ls -la /var/lib/postgresql/14/main/base/16637/
+											total 8
+											drwx------ 2 postgres postgres 4096 Dec 27 17:05 .
+											drwx------ 8 postgres postgres 4096 Dec 27 17:01 ..
+		'test2'									-rw------- 1 postgres postgres    0 Dec 27 17:01 16641
+		'test'									-rw------- 1 postgres postgres    0 Dec 27 17:05 16644
+
+app=# SELECT pg_database_size('app');						-- Узнать размер, занимаемый базой данных 'app' и объектами в ней (функция).
+ pg_database_size
+------------------
+          8774435
+(1 row)
+
+SELECT pg_database_size('app');							-- Для упрощения восприятия можно вывести число в отформатированном виде:
+SELECT pg_size_pretty(pg_database_size('app'));					-- Полный размер таблицы (вместе со всеми индексами):
+SELECT pg_size_pretty(pg_total_relation_size('test2'));				-- И отдельно размер таблицы...
+SELECT pg_size_pretty(pg_table_size('test2'));					-- ...и индексов:
+SELECT pg_size_pretty(pg_indexes_size('test2'));				-- !!! с дефолтным неймспейсом не все так просто !!!
+
+app=# SELECT count(*) FROM pg_class WHERE reltablespace = 0;			-- сколько таблиц в текущем tablespace
+ count
+-------
+   353
+(1 row)

@@ -1,0 +1,35 @@
+\echo :AUTOCOMMIT
+\set AUTOCOMMIT ON									-- убедитесь, что автокоммит включен
+ 
+-- На предыдущем задании для самопроверки была создана таблица persons
+-- CREATE TABLE persons(id serial, first_name text, second_name text);
+-- INSERT INTO persons(first_name, second_name) VALUES ('ivan', 'ivanov');
+
+postgres=# UPDATE persons SET first_name='evgeniy' WHERE second_name = 'ivanov';	-- изменить существующую запись
+UPDATE 1
+
+SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'persons';									-- Убедимся, что появилась мертвая запись		
+ relname | n_live_tup | n_dead_tup | ratio% | last_autovacuum
+---------+------------+------------+--------+-----------------
+ persons |          8 |          1 |     11 |
+(1 row)
+pg_stat_user_tables 		— это системное представление (view) в PostgreSQL, которое содержит статистику использования и производительности пользовательских таблиц. Это один из самых полезных инструментов для мониторинга и анализа работы базы данных.
+системное представление (view)	- Это не таблица, а view (представление), которое агрегирует статистику по всем пользовательским таблицам. Системные таблицы (с префиксом pg_).
+pg_stat_user_tables 		— ваш главный инструмент для анализа использования таблиц
+n_dead_tup 			— ключевой показатель: много мертвых строк = нужен VACUUM
+Статистика накапливается, для сравнения во времени. нужно делать "снимки". Эта статистика бесценна для:
+	Выявления узких мест производительности
+	Настройки autovacuum
+	Планирования индексации
+	Понимания паттернов использования базы данных
+
+
+postgres=# vacuum persons;								-- Очистим таблицу от старых записей
+VACUUM
+postgres=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'persons';						-- Убедимся, что остались только актуальные записи
+ relname | n_live_tup | n_dead_tup | ratio% | last_autovacuum
+---------+------------+------------+--------+-----------------
+ persons |          8 |          0 |      0 |
+(1 row)
+
+ 

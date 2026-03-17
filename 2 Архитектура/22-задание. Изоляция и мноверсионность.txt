@@ -1,0 +1,107 @@
+-- Открыть консоль из под пользователя Линукс postgres (если мы открыли новую консоль под student выполнить sudo su postgres)
+-- Открыть вторую консоль из под пользователя Линукс postgres зажав кнопку shift и нажать на иконку консоли (выполнить sudo su postgres)
+-- запустить везде psql из под пользователя postgres
+psql
+========================сделать в первой сессии новую таблицу и наполнить ее данными
+BEGIN;
+CREATE TABLE persons(id serial, first_name text, second_name text);
+	Имя столбца	Тип данных	Описание
+	id		serial		Уникальный, автоинкрементный идентификатор. Первая запись получит id = 1, вторая id = 2 и т.д. serial — это удобный "самонаполняемый" целочисленный тип для уникальных идентификаторов. технически НЕ является отдельным типом данных. Это удобная обертка вокруг integer:
+			Создается столбец типа integer
+			Автоматически создается последовательность (SEQUENCE)
+			Значение по умолчанию привязывается к этой последовательности
+			Не может быть отрицательным (только положительные числа)
+	first_name	text		Поле для хранения имени в текстовом формате.
+	second_name	text		Поле для хранения фамилии в текстовом формате.
+			date
+			integer (int)	один из основных целочисленных типов данных в SQL, предназначенный для хранения целых чисел без дробной части. просто "контейнер" для целого числа. Значение нужно предоставить явно. Диапазон значений (в PostgreSQL и большинстве СУБД):
+	100
+	-500
+	0
+	2147483647  -- максимальное
+	-2147483648 -- минимальное
+			
+INSERT INTO persons(first_name, second_name) VALUES ('ivan', 'ivanov');
+INSERT INTO persons(first_name, second_name) VALUES ('petr', 'petrov');
+COMMIT;
+postgres=# select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+(2 rows)
+
+
+========================посмотреть текущий уровень изоляции:
+postgres=# show transaction isolation level;
+ transaction_isolation
+-----------------------
+ read committed									-- default. гарантирует, что транзакция видит только подтверждённые изменения других транзакций.
+(1 row)
+
+------------------------ начать новую транзакцию в обоих сессиях с дефолтным (не меняя) уровнем изоляции
+BEGIN;
+postgres=*# insert persons (first_name, second_name) values('setr', 'setrov');
+ERROR:  syntax error at or near "persons"
+LINE 1: insert persons (first_name, second_name) values('setr', 'set...
+		PostgreSQL начинает неявную транзакцию, когда вы выполняете первую команду
+		Если в этой транзакции происходит ошибка - она помечается как ABORTED
+		Любые новые команды в этой транзакции отклоняются
+		Нужно явно завершить транзакцию (ROLLBACK/COMMIT)
+INSERT INTO persons(first_name, second_name) VALUES ('sergey', 'sergeev');	-- в первой сессии добавить новую запись
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+Эта ошибка — особенность PostgreSQL, которая обеспечивает целостность данных. Если в транзакции что-то пошло не так, вся транзакция отменяется, чтобы не оставить данные в половинчатом состоянии. PostgreSQL работает в режиме транзакций. Ваша предыдущая команда INSERT (или другая SQL-команда) завершилась ошибкой, и PostgreSQL отменил (абортировал) текущую транзакцию. Теперь любая новая команда в этой же сессии будет получать эту ошибку, пока вы не завершите "испорченную" транзакцию.
+rollback;									-- сделать запрос на выбор всех записей во второй сессии
+INSERT INTO persons(first_name, second_name) VALUES ('sergey', 'sergeev');	-- повторно, в первой сессии добавить новую запись
+postgres=# INSERT INTO persons(first_name, second_name) VALUES ('sergey', 'sergeev');
+INSERT 0 1
+postgres=# INSERT INTO persons(first_name, second_name) VALUES ('sergey', 'sergeev');
+INSERT 0 1
+postgres=# select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev							-- +
+  4 | sergey     | sergeev							-- позволяет дубли 
+(4 rows)
+	
+ 
+
+-- видите ли вы новую запись во терминале-2, и если да, то почему?
+-- !!! Нет, запись не видно. "Грязное чтение" не допускается на уровне изоляции read committed !!!
+-- завершить транзакцию в первом окне
+COMMIT;
+
+SELECT * FROM persons;								-- сделать запрос во выбор всех записей второй сессии
+ 
+-- видите ли вы новую запись во терминале-2, и если да то почему?
+-- !!! Да, запись видно, потому что мы завершили транзакцию в первой сессии на терминале-1, и на уровне read committed возможно неповторяющееся чтение !!!
+-- завершите транзакцию во второй сессии
+COMMIT;
+
+postgres=# BEGIN transaction isolation level repeatable read;			-- начать новые транзакции, но уже на уровне repeatable read в ОБЕИХ сессиях
+BEGIN
+postgres=*# show transaction isolation level;
+ transaction_isolation
+-----------------------
+ repeatable read
+(1 row)
+				
+ 
+
+-- в первом терминале-1 сессии добавить новую запись:
+INSERT INTO persons(first_name, second_name) VALUES ('sveta', 'svetova');
+-- сделать запрос на выбор всех записей во втором терминале-2 сессии:
+SELECT * FROM persons;
+-- видите ли вы новую запись и если да то почему?
+-- !!! Нет, запись не видно. Грязное чтение не допускается на уровне изоляции repeatable read !!!
+-- завершить транзакцию в первом окне
+COMMIT;
+ 
+
+-- сделать запрос во выбор всех записей второй сессии
+SELECT * FROM persons;
+-- видите ли вы новую запись и если да то почему?
+-- !!! Нет, запись не видно. Неповторяющееся чтение не допускается на уровне изоляции repeatable read в Постгресе!!!
+===================================== задание закончено

@@ -1,0 +1,52 @@
+============================= встроенные средства профилирования:
+postgres=# alter system set log_min_duration_statement = 0;			-- '0' попадание всех запросов. "-1"-выключено встроенное средство профилирования
+ALTER SYSTEM
+				
+postgres=# select pg_reload_conf();						-- перезагрузка параметров Postgres, происходит безшовно
+ pg_reload_conf
+----------------
+ t										-- true
+(1 row)
+
+postgres=# show log_min_duration_statement;					-- статус
+ log_min_duration_statement
+----------------------------
+ 0										-- '0' попадание всех запросов. "-1"-выключено встроенное средство профилирования
+(1 row)
+
+postgres=# select * from test;
+  i
+-----
+  10
+  50
+ 770
+(3 rows)
+
+
+------ 2 терминал:
+ilya@postgres:~$ sudo -u postgres tail /var/log/postgresql/postgresql-14-main.log
+[sudo] password for ilya:
+2025-12-30 07:02:08.248 UTC [660] LOG:  parameter "log_min_duration_statement" changed to "0"
+2025-12-30 07:03:23.422 UTC [969] postgres@postgres LOG:  duration: 0.114 ms  statement: show log_min_duration_statement;
+2025-12-30 07:04:34.019 UTC [969] postgres@postgres LOG:  duration: 16.917 ms  statement: alter system set log_min_duration_statement = -1;
+2025-12-30 07:04:38.462 UTC [969] postgres@postgres LOG:  duration: 0.215 ms  statement: select pg_reload_conf();
+2025-12-30 07:04:38.462 UTC [660] LOG:  received SIGHUP, reloading configuration files
+2025-12-30 07:04:38.463 UTC [660] LOG:  parameter "log_min_duration_statement" changed to "-1"
+2025-12-30 07:04:55.554 UTC [660] LOG:  received SIGHUP, reloading configuration files
+2025-12-30 07:04:55.555 UTC [660] LOG:  parameter "log_min_duration_statement" changed to "0"
+2025-12-30 07:04:58.645 UTC [969] postgres@postgres LOG:  duration: 0.067 ms  statement: show log_min_duration_statement;
+2025-12-30 07:05:13.410 UTC [969] postgres@postgres LOG:  duration: 17.039 ms  statement: select * from test;
+
+ 
+
+============================= Внешнее средство pgBadger:
+ilya@postgres:~$ sudo apt install -y pgbadger					-- -y означает "yes" (да) — это флаг автоматического подтверждения. Когда вы используете sudo apt install -y pgbadger, вы говорите системе: "Установи пакет pgbadger и автоматически отвечай 'Да' на все вопросы, которые обычно задает apt".
+ilya@postgres:~$ sudo apt install -y lynx
+
+tail /var/log/postgresql/postgresql-14-main.log
+
+ilya@postgres:~$ pgbadger /var/log/postgresql/postgresql-14-main.log
+[========================>] Parsed 19626 bytes of 19626 (100.00%), queries: 5, events: 13
+LOG: Ok, generating html report...
+
+ilya@postgres:~$ lynx out.html							-- утилита чтения out.html сформированного pgBadger 

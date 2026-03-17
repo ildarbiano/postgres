@@ -1,0 +1,86 @@
+-------------------------------------------- joins
+CREATE TABLE a_80 (city_name TEXT, country TEXT);
+INSERT INTO a_80 (city_name, country) VALUES
+('Tokyo','Japan'),
+('New York','USA'),
+('Fukuoka','Japan'),
+('Shanghai','China');
+
+CREATE TABLE b_80 (city_name TEXT, godzilla_attacks INT);
+INSERT INTO b_80 (city_name, godzilla_attacks) VALUES
+('Fukuoka',3),
+('Nagoya',2),
+('New York',3),
+('Tokai',3),
+('Tokyo',13),
+('Yokohama',2);
+
+postgres=# 							-- 
+CREATE TABLE a_80 (city_name TEXT, country TEXT);
+INSERT INTO a_80 (city_name, country) VALUES
+('Tokyo','Japan'),
+('New York','USA'),
+('Fukuoka','Japan'),
+('Shanghai','China');
+
+CREATE TABLE b_80 (city_name TEXT, godzilla_attacks INT);
+INSERT INTO b_80 (city_name, godzilla_attacks) VALUES
+('Fukuoka',3),
+('Nagoya',2),
+('New York',3),
+('Tokai',3),
+('Tokyo',13),
+('Yokohama',2);
+CREATE TABLE
+INSERT 0 4
+CREATE TABLE
+INSERT 0 6
+
+
+-------------------------------------------- inner join
+SELECT a_80.city_name, b_80.godzilla_attacks			-- из <таблица a> выбираем "city_name" из <таблица b> выбираем "godzilla_attacks".
+FROM a_80							-- данные ИЗ выбранного поля <таблица a>
+INNER JOIN b_80 
+ON a_80.city_name = 80_b.city_name;				-- СОЕДИНЯЕМ с <таблица b>, по одноимённым полям "city_name".
+
+postgres=# 
+SELECT a_80.city_name, b_80.godzilla_attacks
+FROM a_80
+INNER JOIN b_80
+ON a_80.city_name = b_80.city_name;
+ city_name | godzilla_attacks
+-----------+------------------
+ Fukuoka   |                3
+ New York  |                3
+ Tokyo     |               13
+(3 rows)
+
+
+-------------------------------------------- join
+postgres=# 
+SELECT a_80.city_name, b_80.godzilla_attacks
+FROM a_80
+JOIN b_80
+ON a_80.city_name = b_80.city_name;
+ city_name | godzilla_attacks
+-----------+------------------
+ Fukuoka   |                3
+ New York  |                3
+ Tokyo     |               13
+(3 rows)
+
+
+-------------------------------------------- left Join
+postgres=#
+SELECT a_80.city_name, b_80.godzilla_attacks
+FROM a_80 LEFT
+JOIN b_80
+ON a_80.city_name = b_80.city_name;
+ city_name | godzilla_attacks
+-----------+------------------
+ Fukuoka   |                3
+ New York  |                3
+ Shanghai  |							-- NULL
+ Tokyo     |               13
+(4 rows)
+

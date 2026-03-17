@@ -1,0 +1,28 @@
+-- Создать каталог в папке home и выдать на него права всем
+
+sudo mkdir /home/1 && sudo chmod 777 /home/1
+
+ 
+
+sudo -u postgres psql
+ 
+
+-- создадим табличку для тестов
+
+CREATE TABLE testcopy(i int, col text);
+
+INSERT INTO testcopy VALUES (1, '123');
+
+INSERT INTO testcopy VALUES (2, '456');
+
+INSERT INTO testcopy VALUES (3, '789');
+ 
+
+-- скопируем данные
+
+COPY test TO '/home/1/testcopy.csv' CSV HEADER;
+ 
+
+-- Убедиться, что данные скопированы
+
+\! cat /home/1/testcopy.csv

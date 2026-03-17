@@ -1,0 +1,115 @@
+=============================================== 1НФ - приведение к первой нормальной форме:
+postgres=# ------------------------------------ создадим таблицу c марками и моделями
+CREATE TABLE marka(
+  marka TEXT,
+  model TEXT
+);
+
+
+----------------------------------------------- добавим пару записей
+INSERT INTO marka(marka, model) VALUES ('Apple','Iphone13'),('Apple','Iphone14'),('Xiaomi', 'Mi11'),('Xiaomi', 'Mi12');
+
+
+---------------------------------------------- посмотрим, что у нас добавилось
+SELECT * FROM marka;
+CREATE TABLE
+INSERT 0 4
+ marka  |  model
+--------+----------
+ Apple  | Iphone13
+ Apple  | Iphone14
+ Xiaomi | Mi11
+ Xiaomi | Mi12
+(4 rows)
+
+ 
+=============================================== 2НФ - приведение ко второй нормальной форме:
+postgres=# ----------------------------------- создадим таблицу c дилерами и телефонами
+CREATE TABLE dealer(
+  name TEXT,
+  phones TEXT
+);
+
+---------------------------------------------- добавим пару записей
+INSERT INTO dealer(name, phones) VALUES ('Svyaznoi','8-800'),('MTC','100-500');
+
+
+---------------------------------------------- посмотрим, что у нас добавилось
+SELECT * FROM dealer;
+CREATE TABLE
+INSERT 0 2
+   name   | phones
+----------+---------
+ Svyaznoi | 8-800
+ MTC      | 100-500
+(2 rows)
+
+ 
+=============================================== 3НФ - приведение к третьей нормальной форме:
+postgres=# ------------------------------------ создадим таблицу c марками и дилерами, свяжим 1НФ и 2НФ, сделоем соответствие 1 и 2 таблиц.
+CREATE TABLE marka_dealer(
+  marka TEXT,
+  dealer TEXT
+);
+
+
+----------------------------------------------- добавим пару записей
+INSERT INTO marka_dealer(marka, dealer) VALUES ('Apple','Svyaznoi'),('Apple','MTC'),('Xiaomi','MTC');
+
+
+-- посмотрим, что у нас добавилось
+SELECT * FROM marka_dealer;
+CREATE TABLE
+INSERT 0 3
+ marka  |  dealer
+--------+----------
+ Apple  | Svyaznoi
+ Apple  | MTC
+ Xiaomi | MTC
+(3 rows)
+
+ 
+
+postgres=# -------------------------------------- создадим таблицу c марками и скидками
+CREATE TABLE discount(
+  marka TEXT,
+  discount TEXT
+);
+
+------------------------------------------------- добавим пару записей
+INSERT INTO discount(marka, discount) VALUES ('Apple','5'),('Xiaomi','10');
+
+
+------------------------------------------------- посмотрим, что у нас добавилось
+SELECT * FROM discount;
+CREATE TABLE
+INSERT 0 2
+ marka  | discount
+--------+----------
+ Apple  | 5
+ Xiaomi | 10
+(2 rows)
+
+================================================= 3НФ - все созданные находятся в третьей номальной форме:
+1\ исключено дублирование информации;
+2\ 
+
+postgres=# ------------------------------------- соберем вместе:
+SELECT m.marka, m.model, d.name, d.phones, ds.discount
+FROM marka m
+JOIN marka_dealer md
+  ON m.marka = md.marka
+JOIN dealer d
+  ON md.dealer = d.name
+JOIN discount ds
+  ON m.marka = ds.marka;
+ marka  |  model   |   name   | phones  | discount
+--------+----------+----------+---------+----------
+ Apple  | Iphone13 | Svyaznoi | 8-800   | 5
+ Apple  | Iphone13 | MTC      | 100-500 | 5
+ Apple  | Iphone14 | Svyaznoi | 8-800   | 5
+ Apple  | Iphone14 | MTC      | 100-500 | 5
+ Xiaomi | Mi11     | MTC      | 100-500 | 10
+ Xiaomi | Mi12     | MTC      | 100-500 | 10
+(6 rows)
+

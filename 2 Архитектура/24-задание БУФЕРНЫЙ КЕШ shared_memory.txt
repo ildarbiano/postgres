@@ -1,0 +1,178 @@
+postgres=# CREATE TABLE test_text(t text);				-- сгенерируем значения с текстовыми полями - чтобы занять больше страниц
+CREATE TABLE
+postgres=# INSERT INTO test_text SELECT 'строка '||s.id FROM generate_series(1,500) AS s(id);
+INSERT 0 500								-- вставляет 500 строк в таблицу test_text с текстовыми значениями, сгенерированными динамически. Создает 500 записей в таблице test_text, где каждая строка содержит текст "строка X", где X — число от 1 до 500.
+|| 			— оператор конкатенации (объединения строк) в PostgreSQL
+'строка ' 		— строковая константа
+s.id 			— значение из столбца id сгенерированной последовательности
+generate_series(1,500) 	— функция PostgreSQL, которая генерирует последовательность чисел от 1 до 500 включительно
+AS s(id) 		— дает псевдоним s для результата функции, и называет столбец id
+Результат 		= временная таблица с одним столбцом id и 500 строками:
+-------------------------------------------
+postgres=# SELECT * FROM test_text limit 10;
+     t
+-----------
+ строка 1
+ строка 2
+ строка 3
+ строка 4
+ строка 5
+ строка 6
+ строка 7
+ строка 8
+ строка 9
+ строка 10
+(10 rows)
+postgres=# \q
+ilya@postgres:~$ sudo su postgres
+postgres@postgres:/home/ilya$ sudo pg_ctlcluster 14 main restart		-- рестартуем кластер
+[sudo] password for postgres:
+Sorry, try again.
+[sudo] password for postgres:
+Sorry, try again.
+[sudo] password for postgres:
+sudo: 3 incorrect password attempts
+postgres@postgres:/home/ilya$
+exit
+ilya@postgres:~$ sudo passwd postgres
+New password:
+Retype new password:
+passwd: password updated successfully
+ilya@postgres:~$ sudo su postgres
+postgres@postgres:/home/ilya$ sudo pg_ctlcluster 14 main restart
+[sudo] password for postgres:
+postgres is not in the sudoers file.  This incident will be reported.		-- пользователь postgres не имеет прав на использование sudo. Это нормально и часто настраивается именно так из соображений безопасности. Пользователь postgres обычно не входит в группу sudo. Это сделано намеренно: postgres— системный пользователь для службы БД. Ему не нужны полные права sudo. Для администрирования используется ваш основной пользователь
+postgres@postgres:/home/ilya$
+exit 
+ilya@postgres:~$ sudo -u postgres pg_ctlcluster 14 main restart
+Error: cluster is running from systemd, can only restart it as root. Try instead:
+  sudo systemctl restart postgresql@14-main
+ilya@postgres:~$ sudo systemctl restart postgresql@14-main			-- правильный рестарт кластера
+ilya@postgres:~$ sudo -u postgres psql
+could not change directory to "/home/ilya": Permission denied
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+postgres=# CREATE EXTENSION pg_prewarm;						-- устанавливает (активирует) расширение-EXTENTION 'pg_prewarm' в текущей базе данных PostgreSQL. Создаются объекты в базе данных: 
+Функция pg_prewarm () 						— основная функция для прогрева. 
+Функция pg_prewarm (regclass, text, text, bigint, bigint) 	— с полными параметрами. 
+Представление autoprewarm —					- для автоматического прогрева. Вспомогательные функции и представления
+CREATE EXTENSION
+pg_prewarm 		— это расширение PostgreSQL, которое позволяет загружать данные из таблиц или индексов в кэш операционной системы (shared buffers) заранее, до того как они понадобятся в работе.
+prewarm			- Представьте, что у вас есть большая таблица (например, 50 ГБ). При перезапуске PostgreSQL:
+		Данные лежат на диске (медленно)
+		При первом запросе к таблице она загружается в кэш (shared buffers)
+		Это занимает время и создает нагрузку
+pg_prewarm 		- позволяет заранее загрузить данные в кэш, чтобы при первом же запросе они уже были в памяти.
+
+postgres=# SELECT pg_prewarm('test_text');					-- загружает данные таблицы test_text в кэш операционной системы (в режиме по умолчанию 'buffer'). Что происходит конкретно: Находит таблицу test_text в текущей базе данных. Читает все её блоки данных с диска. 
+Помещает их в shared buffers PostgreSQL (кэш базы данных в памяти). Возвращает количество загруженных блоков.
+ pg_prewarm
+------------
+          4									-- количество загруженных блоков
+(1 row)
+
+
+SELECT * FROM pg_buffercache_v WHERE relname='test_text';
+postgres=# SELECT * FROM pg_buffercache_v WHERE relname='test_text';
+ERROR:  relation "pg_buffercache_v" does not exist
+LINE 1: SELECT * FROM pg_buffercache_v WHERE relname='test_text';
+                      ^
+postgres=# \dx pg_buffercache							-- какие содержатся, в EXTENTION, функции
+     List of installed extensions
+ Name | Version | Schema | Description
+------+---------+--------+-------------
+(0 rows)
+postgres=# CREATE EXTENSION pg_buffercache;					-- создадим расширение-EXTENTION для просмотра кеша. Создадим представление для просмотра содержимого буферного кеша. 'pg_buffercache' расширение PostgreSQL, которое позволяет просматривать и анализировать содержимое shared buffers (кэша оперативной памяти базы данных). Это "окно" в то, что происходит в памяти прямо сейчас
+CREATE EXTENSION								-- 
+postgres=# \dx pg_buffercache							-- какие содержатся, в EXTENTION, функции
+                    List of installed extensions
+      Name      | Version | Schema |           Description
+----------------+---------+--------+---------------------------------
+ pg_buffercache | 1.3     | public | examine the shared buffer cache
+(1 row)
+
+
+ 
+
+CREATE VIEW pg_buffercache_v AS
+SELECT bufferid,
+       (SELECT c.relname FROM pg_class c WHERE  pg_relation_filenode(c.oid) = b.relfilenode ) relname,
+       CASE relforknumber
+         WHEN 0 THEN 'main'
+         WHEN 1 THEN 'fsm'
+         WHEN 2 THEN 'vm'
+       END relfork,
+       relblocknumber,
+       isdirty,
+       usagecount
+FROM   pg_buffercache b
+WHERE  b.relDATABASE IN (    0, (SELECT oid FROM pg_DATABASE WHERE datname = current_database()) )
+AND    b.usagecount is not null;						-- Объединяет информацию из pg_buffercache с именами таблиц. Преобразует числовые коды в понятные значения. Фильтрует только релевантные данные для текущей БД.
+ 
+=============================================-- убедимся, что данные загружены в буферный кеш ==================================
+postgres=# \dv pg_buffercache_v							-- убедиться что представление есть
+              List of relations
+ Schema |       Name       | Type |  Owner
+--------+------------------+------+----------
+ public | pg_buffercache_v | view | postgres
+postgres=# SELECT * FROM pg_buffercache_v LIMIT 10;				-- Протестировать представление. Посмотреть всё содержимое (первые 10 строк)
+ bufferid |         relname          | relfork | relblocknumber | isdirty | usagecount
+----------+--------------------------+---------+----------------+---------+------------
+        1 | pg_database              | main    |              0 | f       |          4
+        2 | pg_tablespace            | main    |              0 | f       |          1
+        7 | pg_class_oid_index       | main    |              3 | f       |          5
+        8 | pg_class_oid_index       | main    |              1 | f       |          5
+        9 | pg_amop                  | main    |              0 | f       |          5
+       10 | pg_am_oid_index          | main    |              0 | f       |          0
+       11 | pg_depend                | main    |             65 | f       |          2
+       12 | pg_attrdef_oid_index     | main    |              0 | f       |          1
+       13 | pg_depend_depender_index | main    |              3 | f       |          2
+       14 | pg_proc                  | main    |              0 | f       |          0
+(10 rows)
+
+postgres=# SELECT *
+FROM pg_buffercache_v
+WHERE usagecount >= 4
+ORDER BY usagecount DESC, bufferid
+LIMIT 20;									-- Блоки с наибольшим usagecount (чаще всего используемые)
+ bufferid |                 relname                 | relfork | relblocknumber | isdirty | usagecount
+----------+-----------------------------------------+---------+----------------+---------+------------
+        1 | pg_database                             | main    |              0 | f       |          5
+        9 | pg_amop                                 | main    |              0 | f       |          5
+       25 | pg_class                                | main    |              8 | f       |          5
+       26 | pg_attribute_relid_attnum_index         | main    |              0 | f       |          5
+       27 | pg_attribute_relid_attnum_index         | main    |              3 | f       |          5
+       30 | pg_class_relname_nsp_index              | main    |              3 | f       |          5
+       46 | pg_class_oid_index                      | main    |              2 | f       |          5
+       61 | pg_statistic                            | main    |              2 | f       |          5
+       65 | pg_statistic_ext_relid_index            | main    |              0 | f       |          5
+       67 | pg_class_relname_nsp_index              | main    |              1 | f       |          5
+       69 | pg_database_oid_index                   | main    |              0 | f       |          5
+       70 | pg_database_oid_index                   | main    |              1 | f       |          5
+       71 | pg_db_role_setting_databaseid_rol_index | main    |              0 | f       |          5
+       76 | pg_database_datname_index               | main    |              0 | f       |          5
+       77 | pg_database_datname_index               | main    |              1 | f       |          5
+       85 | pg_index_indexrelid_index               | main    |              0 | f       |          5
+       86 | pg_index_indexrelid_index               | main    |              1 | f       |          5
+       90 | pg_cast                                 | main    |              0 | f       |          5
+       91 | pg_opclass                              | main    |              1 | f       |          5
+       93 | pg_amop_fam_strat_index                 | main    |              3 | f       |          5
+(20 rows)
+
+
+postgres=# SELECT
+    relfork,
+    COUNT(*) as blocks,
+    COUNT(DISTINCT relname) as tables
+FROM pg_buffercache_v
+GROUP BY relfork
+ORDER BY blocks DESC;								-- Что у нас в кэше по типам файлов
+ relfork | blocks | tables
+---------+--------+--------
+ main    |    135 |     55
+ vm      |      1 |      1
+(2 rows)
+
+
+
+SELECT * FROM pg_buffercache_v WHERE relname='test_text';

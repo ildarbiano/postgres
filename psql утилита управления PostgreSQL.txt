@@ -1,0 +1,124 @@
+============================== подробней в "Организация данных\Физическое устройство"
+============================== Утилиты PostgreSQL:
+ilya@postgres:~$ pg_[Tab-Tab]
+pg_archivecleanup  pg_config          pg_dropcluster     pg_lsclusters      pg_renamecluster   pg_upgradecluster
+pg_backupcluster   pg_conftool        pg_dump            pg_receivewal      pg_restore         pg_virtualenv
+pg_basebackup      pg_createcluster   pg_dumpall         pg_receivexlog     pg_restorecluster
+pg_buildext        pg_ctlcluster      pg_isready         pg_recvlogical     pg_updatedicts
+
+============================= Просмотр кластеров:
+ilya@postgres:~$ pg_lsclusters											#####----список кластеров
+Ver Cluster Port Status Owner    Data directory              Log file
+14  main    5432 online postgres /var/lib/postgresql/14/main /var/log/postgresql/postgresql-14-main.log
+
+============================= Создать кластер:
+ilya@postgres:~$ sudo su postgres
+postgres@postgres:/home/ilya$ pg_createcluster 14 lesson
+ilya@postgres:~$ sudo -u postgres pg_createcluster 14 lesson
+ilya@postgres:~$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  lesson  5433 down   postgres /var/lib/postgresql/14/lesson /var/log/postgresql/postgresql-14-lesson.log	###--остановлен
+14  main    5432 online postgres /var/lib/postgresql/14/main   /var/log/postgresql/postgresql-14-main.log	###--запущен
+
+============================= Управлять кластером:
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 lesson start
+Warning: the cluster will not be running as a systemd service. Consider using systemctl:
+  sudo systemctl start postgresql@14-lesson
+postgres@postgres:/home/ilya$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory                Log file
+14  lesson  5433 online postgres /var/lib/postgresql/14/lesson /var/log/postgresql/postgresql-14-lesson.log	###--запущен
+14  main    5432 online postgres /var/lib/postgresql/14/main   /var/log/postgresql/postgresql-14-main.log	###--запущен
+
+postgres@postgres:/home/ilya$ psql -p 5433									###--подключение к кластеру через Порт
+postgres@postgres:/home/ilya$ psql										###--подключение к кластеру через Порт по-умолчанию "5432"
+
+============================= Удалить кластер:
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 lesson stop
+postgres@postgres:/home/ilya$ pg_lsclusters
+postgres@postgres:/home/ilya$ pg_dropcluster 14 lesson
+postgres@postgres:/home/ilya$ pg_lsclusters
+
+
+============================= Консольная утилита PostgreSQL:
+psql -d база -U роль -h узел -p порт			--формула
+sudo -u postgres psql					--войти в кластер Postgre, как пользователь по-умолчанию
+----------------------------------------------------------
+\d 							= describe (показать/описать)
+\d                    					-все объекты в текущей схеме
+postgres=# \q						-выйти из программы psql
+postgres=# exit						-выйти из программы psql
+postgres=#\?						-список команд psql
+postgres=# \help					-список команд SQL
+postgres=#\h <команда>					-синтаксис \help CREATE
+postgres=# \l						-список доступных баз данных в кластере
+postgres=# \dn						-schema
+postgres=# \dt						-список таблиц в текущей базе банных
+postgres=# \dt a					-просмотр таблицы А в текущей базе банных
+postgres=# \dt public.*					-список таблиц в schema 'public' и текущей базе банных
+postgres=# \dv pg_buffercache_v				-проверить что представление создано. Views (представления)
+postgres=# \d pg_buffercache_v				-просмотр структуры представления
+postgres=# \d public.pg_database			-просмотр структуры
+postgres=# \d test_72;					-информация о таблице (включая индексы)
+postgres=# \d+ a					-просмотр, расширенный, таблицы А в текущей базе банных
+postgres=# \dp test_a					-Privileges на объект 		-
+\dm 							—Materialized Views (материализованные представления)
+\du, \dg, \dr						—Users/Groups/Roles (пользователи/группы)
+postgres=# \dx+				                -Objects in extension "pageinspect". Object description
+postgres=# \dx+						-какие содержатся, в EXTENTION, функции 
+\dx							-Показать расширения базы данных
+\df							-Показать функции
+postgres=# \db						-список tablespaces, текущей Базы Данных
+postgres=# \dRp+					-список публикаций PUBLICATION, текущей Базы Данных
+postgres=# \dRs						-список подписок SUBSCRIPTION, текущей Базы Данных
+postgres-#						-ожидание завершения ввода запроса. ";"
+postgres-#						-ожидание завершения ввода запроса. "^c"
+postgres=# \!						-вход в директорию кластера postgres@postgres:/usr/lib/postgresql/14/bin$
+postgres=# \! ls -la					-вывод списка директории кластера /usr/lib/postgresql/14/bin
+postgres=# \! [любые команды linux]
+postgres=!# 						— ❌ транзакция сломана (aborted). Транзакция ошибочная, сней нужно что-то делать.
+postgres=# BEGIN;					— транзакция активна. Открыть транзакция, для ввода списка команд.
+postgres=*# 						— транзакция активна;
+postgres=*# ROLLBACK;					- ОТМЕНА действия/транзакции.
+postgres=*# commit;					- фиксация изменений БД. зафиксированную транзакцию отменить не возможно;
+postgres=# \c buffer_temp				- connect/переход в другую ДБ кластера
+postgres=> \conninfo					- информация о подключении.
+postgres=# \echo :AUTOCOMMIT				- напечатать статус 
+postgres"#						- многострочный режим" (multi-line mode) в psql. Знак " в приглашении postgres"# означает, что PostgreSQL ждет завершения команды. CTRL+C чтобы отменить текущую команду
+\g							- Выполнить предыдущий SQL
+\gx							- Выполнить в расширенном формате. postgres=# SELECT * FROM pg_stat_activity \gx
+\g filename						- Сохранить результат в файл
+\g | command						- Отправить результат в shell-команду
+
+postgres@postgres:/usr/lib/postgresql/14/bin$ ls	-просмор директории кластера
+clusterdb   dropuser    pg_archivecleanup  pg_controldata  pg_isready      pg_restore      pg_upgrade       postgres    vacuumdb
+createdb    initdb      pg_basebackup      pg_ctl          pg_receivewal   pg_rewind       pg_verifybackup  postmaster  vacuumlo
+createuser  oid2name    pg_checksums       pg_dump         pg_recvlogical  pg_test_fsync   pg_waldump       psql
+dropdb      pg_amcheck  pg_config          pg_dumpall      pg_resetwal     pg_test_timing  pgbench          reindexdb
+postgres=# \l						-List of databases
+
+CREATE USER ilya WITH SUPERUSER CREATEDB CREATEROLE LOGIN;	-Создать пользователя с вашим системным именем
+ALTER USER postgres PASSWORD '123456';				-????
+CREATE TABLE A (i int);
+
+------------------- ОПЕРАТОРЫ:
+::							- преобразование d::text. явно преобразовывать в текстовый формат
+|| 							— оператор "склейки", например: x := d::text || ' ' || f::text
+' ' 							— пробел (текст: " "), например: x := d::text || ' ' || f::text
+
+------------------- УПРАВЛЕНИЕ БД через Клиент PostgreSQL:
+-c 	команда		Выполнить одну команду	
+-f 	файл.sql 	Выполнить файл
+sudo -u postgres psql -c "drop database if exists index_test;"			# Удалить БД
+sudo -u postgres psql -c "CREATE DATABASE index_test;"				# Создать БД
+sudo -u postgres psql -c "CREATE USER ilya WITH PASSWORD 'secret';"		# Создать пользователя
+sudo -u postgres psql -c "GRANT ALL ON DATABASE index_test TO ilya;"		# Назначить привилегии
+echo "CREATE DATABASE new_db;
+CREATE TABLE users(id SERIAL, name TEXT);
+GRANT ALL ON DATABASE new_db TO ilya;" > setup.sql				# 1. Создать файл
+sudo -u postgres psql -f setup.sql						# 2. Выполнить
+sudo -u postgres psql -c "\l"							# Список всех БД
+sudo -u postgres psql -c "CREATE DATABASE dbname OWNER username;"		# Создать БД с владельцем
+sudo -u postgres psql -c "ALTER DATABASE dbname RENAME TO newname;"		# Изменить БД
+sudo -u postgres pg_dump dbname > backup.sql					# Резервное копирование
+sudo -u postgres psql dbname < backup.sql					# Восстановление
+

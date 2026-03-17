@@ -1,0 +1,5 @@
+Объединение https://www.db-fiddle.com/f/qPC43WyZwSJT83EbgLApz7/0
+
+Исключение https://www.db-fiddle.com/f/qPC43WyZwSJT83EbgLApz7/2
+
+Пересечение https://www.db-fiddle.com/f/qPC43WyZwSJT83EbgLApz7/3

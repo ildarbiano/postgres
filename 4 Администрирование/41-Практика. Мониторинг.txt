@@ -1,0 +1,166 @@
+============================ нагрузка на оборудование:
+ilya@postgres:~$ sudo top								--top
+[sudo] password for ilya:
+top - 12:57:32 up  1:09,  4 users,  load average: 0.02, 0.01, 0.00
+Tasks: 140 total,   1 running, 139 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.3 us,  0.5 sy,  0.0 ni, 98.9 id,  0.0 wa,  0.0 hi,  0.2 si,  0.0 st		--CPU
+MiB Mem :   6148.8 total,   5680.3 free,    189.8 used,    278.7 buff/cache
+MiB Swap:   1915.0 total,   1915.0 free,      0.0 used.   5713.6 avail Mem
+	top - 12:57:32 			— текущее системное время.
+	up 1:09 			— время работы системы без перезагрузки (uptime). Система работает 1 час 9 минут.
+	4 users				— количество пользователей, которые в данный момент работают в системе (имеют открытые сеансы).
+	load average: 0.02, 0.01, 0.00 	— средняя загрузка системы за последние 1, 5 и 15 минут соответственно. Значения показывают среднее количество процессов, ожидающих выполнения (в очереди на процессор или дисковый ввод/вывод). Для одноядерного процессора значение 1.00 означает 100% загрузку.
+	Task: 	140 total 		— общее количество процессов в системе.
+		1 running 		— 1 процесс находится в состоянии выполнения (активно использует CPU).
+		139 sleeping 		— 139 процессов находятся в состоянии сна (ожидают какого-либо события, например, ввода данных или завершения операции ввода/вывода).
+		0 stopped 		— 0 процессов остановлено (например, отправлены сигналы SIGSTOP).
+		0 zombie 		— 0 процессов-"зомби". Это "мертвые" процессы, которые завершили выполнение, но их запись еще не была удалена из таблицы процессов системой (обычно из-за ошибки в родительском процессе). Небольшое количество "зомби" не критично, но растущее число может указывать на проблему.
+	%Cpu(s): 	us (user) 	— 0.3%: время, затраченное на выполнение процессов пользователя (обычные программы).
+			sy (system) 	— 0.5%: время, затраченное на выполнение процессов ядра системы.
+			ni (nice) 	— 0.0%: время, затраченное на выполнение процессов пользователя с измененным приоритетом (nice).
+			id (idle) 	— 98.9%: время простоя процессора. Ваша система почти ничего не делает.
+			wa (I/O wait) 	— 0.0%: время, в течение которого CPU простаивал в ожидании завершения операций дискового ввода/вывода (I/O). Высокий показатель указывает на "узкое место" в скорости диска.
+			hi (hardware interrupts) 	— 0.0%: время, затраченное на обработку аппаратных прерываний.
+			si (software interrupts) 	— 0.2%: время, затраченное на обработку программных прерываний.
+			st (steal time) 		— 0.0%: виртуальный CPU ждал, когда гипервизор обслуживает другие виртуальные машины (актуально для виртуальных серверов/VPS). Ненулевое значение означает, что физический хост перегружен.
+	MiB Mem :	total 		— всего доступно физической памяти: ~6 ГБ (6148.8 МиБ).
+			free 		— свободная память: ~5.5 ГБ. Но в Linux это не лучший показатель.
+			used 		— используемая процессами память: ~190 МБ.
+	MiB Swap:	buff/cache 		— память "подкачки", используемая ядром для буферов и кэша (~279 МБ). Эта память быстро освобождается, если она понадобится запущенным программам. Поэтому реально занятой памятью считается в основном used.
+			Swap total/free/used 	— общий размер, свободный и использованный swap (дисковое пространство, используемое как дополнение к RAM). 0.0 used — это отлично, система не использует своп, значит, RAM хватает с избытком.
+			avail Mem 		— самый важный показатель — ~5.6 ГБ памяти, которая доступна для запуска новых приложений без необходимости вытеснять кэш. Она рассчитывается как free + buff/cache + часть кэша, которую можно освободить. Если эта цифра близка к total, как у вас, значит, система имеет много свободных ресурсов.
+
+atop 		— расширенный мониторинг с ведением логов
+htop 		— улучшенная замена top с цветным интерфейсом
+
+
+ilya@postgres:~$ sudo htop
+sudo: htop: command not found
+ilya@postgres:~$ sudo atop
+sudo: atop: command not found
+# 1. Сначала исправим состояние dpkg
+sudo dpkg --configure -a
+
+# 2. Попробуем исправить сломанные зависимости
+sudo apt --fix-broken install
+
+# 3. Обновим списки пакетов
+sudo apt update
+
+# 4. Попробуем установить пакеты по одному, чтобы понять, какой вызывает проблему
+sudo apt install atop
+sudo apt install htop
+sudo apt install sysstat  # пакет, который содержит iostat
+sudo apt install iotop
+sudo apt install pgtop
+
+
+
+============================ нагрузка дисковой системы:
+sysstat 	— содержит iostat (мониторинг дискового ввода/вывода), mpstat, sar
+iotop 		— мониторинг дискового ввода/вывода по процессам
+sudo iotop 	— мониторинг дискового ввода/вывода по процессам
+sudo iostat -x	- мониторинг дискового ввода/вывода
+ 
+
+============================ pgtop:
+pgtop 		— мониторинг. Анализирует текущие запросы к PostgreSQL: кто использует память и процессор right now.
+ilya@postgres:~$ pgtop
+-bash: pgtop: command not found
+
+ilya@postgres:~$ sudo apt install pgtop
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+pgtop is already the newest version (4.0.0-2).
+0 upgraded, 0 newly installed, 0 to remove and 61 not upgraded.
+
+ilya@postgres:~$ sudo pgtop
+sudo: pgtop: command not found
+ilya@postgres:~$ sudo find / -name "*pgtop*" -type f 2>/dev/null
+/var/lib/dpkg/info/pgtop.md5sums
+/var/lib/dpkg/info/pgtop.list
+^C
+
+ilya@postgres:~$ sudo -u postgres pg_top						-- правильное написание запуска утилиты ))
+
+--------------------------- 2 окно. Создаём нагрузку
+sudo -u postgres psql
+postgres=# CREATE TABLE monit (i int);
+CREATE TABLE
+
+postgres=# INSERT INTO monit SELECT s.id FROM generate_series(1,1000000000) AS s(id);	-- Создаём нагрузку
+ERROR:  could not extend file "base/13759/16652.21": wrote only 4096 of 8192 bytes at block 2789908
+HINT:  Check free disk space.
+ 
+
+--------------------------- 1 Окно. Мониторинг. --------------------------------------------
+ilya@postgres:~$ sudo -u postgres pg_top
+    PID USERNAME    SIZE   RES STATE   XTIME  QTIME  %CPU LOCKS COMMAND
+  77788 postgres     79M   18M active   0:00   0:00   0.0     8 postgres: 14/main: postgres postgres [local] idle
+  10845 postgres    202M   88M active   1:38   1:38  98.5     1 postgres: 14/main: postgres postgres [local] INSERT
+--------------------------------------------------- текст запроса Q [PID] -------------------
+Current query for procpid 10845:
+INSERT INTO monit SELECT s.id FROM generate_series(1,1000000000) AS s(id);
+--------------------------------------------------- план запросв: E [PID] ----------------------------
+Current query plan for procpid 10845:
+ Statement:
+INSERT INTO monit SELECT s.id FROM generate_series(1,1000000000) AS s(id);
+Query Plan:
+Insert on monit  (cost=0.00..10000000.00 rows=0 width=0)
+  ->  Function Scan on generate_series s  (cost=0.00..10000000.00 rows=1000000000 width=4)
+JIT:
+  Functions: 2
+  Options: Inlining true, Optimization true, Expressions true, Deforming true
+--------------------------------------------------- блокировки объектов для запросов: L [PID] -----------------------
+Locks held by procpid 10845:
+
+  | database | schema   | table | index | type             | granted
+--+----------+----------+-------+-------+------------------+--------
+1 | postgres | postgres | monit |       | RowExclusiveLock | t
+
+
+============================ Мониторинг pg_stat_activity:
+-- что подключено в текущую секунду
+-- во 2 запустим нагрузку
+
+-- в 1 анализируем нагрузку:
+sudo -u postgres psql
+postgres=# SELECT * FROM pg_stat_activity;						-- много информации
+											-- Активные запросы длительностью более 5 секунд:
+postgres=# SELECT now() - query_start as "runtime", usename, datname, state, wait_event_type, wait_event, query 
+FROM pg_stat_activity 
+WHERE now() - query_start > '5 seconds'::interval and state='active' 
+ORDER BY runtime DESC;
+--------------
+     runtime     | usename  | datname  | state  | wait_event_type | wait_event  |                                   query
+-----------------+----------+----------+--------+-----------------+-------------+----------------------------------------------------------------------------
+ 00:06:21.596276 |          | postgres | active | Timeout         | VacuumDelay | autovacuum: VACUUM postgres.monit
+ 00:01:45.934382 | postgres | postgres | active |                 |             | INSERT INTO monit SELECT s.id FROM generate_series(1,1000000000) AS s(id);
+(2 rows)			       
+				       | Статус подключения к Postgres:
+ 				       | idle 			-- вызывают подозрения, потому как подключивщись, ничего не делает вызванны процесс. 
+				       | idle in transaction!	-- Но хуже всего! Начали транзакцию и ничего не делаем.
+				       | transaction		-- 
+
+○  SELECT pg_cancel_backend[procPID];							-- ●  Kill process для 'active'
+○  SELECT pg_terminate_backend[procPID];						-- ●  Kill process для 'idle'
+ 
+
+SELECT pid, xact_start, now() - xact_start AS duration 
+FROM pg_stat_activity 
+WHERE state LIKE '%transaction%' 
+ORDER BY duration DESC;									-- ТОП по загрузке CPU, для state = transaction:
+
+--------------------------------------------- -- Расширение для более глубокого изучения:
+CREATE EXTENSION pg_stat_statements;							-- Расширение для более глубокого изучения						
+alter system set shared_preload_libraries = 'pg_stat_statements';
+exit
+sudo pg_ctlcluster 14 main restart							-- требует перезагрузки.
+sudo -u postgres psql
+show shared_preload_libraries;								-- проверка загрузки расщирения в библиотеки
+SELECT substring(query, 1, 50) AS short_query, round(total_exec_time::numeric, 2) AS total_time,
+  calls, rows, round(total_exec_time::numeric / calls, 2) AS avg_time,
+  round((100 * total_exec_time / sum(total_exec_time::numeric) OVER ())::numeric, 2) AS percentage_cpu
+FROM pg_stat_statements
+ORDER BY total_time DESC LIMIT 20;							-- ТОП по времени выполнения, завершённых запросов

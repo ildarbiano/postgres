@@ -1,0 +1,97 @@
+CREATE DATABASE logical;				-- создать свою БД
+\c logical						-- переключиться на созданную БД
+CREATE SCHEMA sc;					-- создать схему
+CREATE TABLE sc.test(i int);				-- создать таблицу с созданной на 3 шаге схеме
+ 
+
+------------------------------------- убедиться, что таблица создалась в нужной схеме
+postgres=# \dn						--
+   List of schemas
+   Name   |  Owner
+----------+----------
+ postgres | postgres
+ public   | postgres
+(2 rows)
+
+postgres=# \dt public.*					--
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1        | table | postgres
+ public | t2        | table | postgres
+ public | test      | table | postgres
+ public | test_text | table | postgres
+(6 rows)
+
+postgres=# \dt postgres.*				--
+          List of relations
+  Schema  | Name  | Type  |  Owner
+----------+-------+-------+----------
+ postgres | t1    | table | postgres
+ postgres | test5 | table | postgres
+(2 rows)
+
+postgres=# SELECT
+    c.oid,
+    n.nspname as schema,
+    c.relname as table_name,
+    c.relfilenode as file_node,
+    pg_relation_filepath(c.oid) as filepath
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE c.relname = 't1'
+ORDER BY n.nspname;
+  oid  |  schema  | table_name | file_node |     filepath
+-------+----------+------------+-----------+------------------
+ 16630 | postgres | t1         |     16630 | base/13759/16630		-- одна таблица t1
+ 16623 | public   | t1         |     16623 | base/13759/16623		-- другая, независимая таблица t1
+(2 rows)
+
+postgres=# \d public.t1							-- структура
+                 Table "public.t1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           |          |
+
+postgres=# \d postgres.t1						-- структура
+                Table "postgres.t1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           |          |
+
+
+SELECT * FROM public.t1;      						-- точно public.t1
+SELECT * FROM postgres.t1;    						-- точно postgres.t1
+
+postgres=# SHOW search_path;						-- public, значит при SELECT * FROM t1; запросятся данные со схемы\schema 'public'
+   search_path
+-----------------
+ "$user", public
+(1 row)
+
+================================ переименовать таблицу, чтобы избежать тутаницы:
+postgres=# ALTER TABLE public.t1 RENAME TO t1_public;
+ALTER TABLE								-- изменить имя на..
+postgres=# ^C
+postgres=# \dt public.*
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1_public | table | postgres
+ public | t2        | table | postgres
+ public | test      | table | postgres
+ public | test_text | table | postgres
+(6 rows)
+
+postgres=# \dt postgres.*
+          List of relations
+  Schema  | Name  | Type  |  Owner
+----------+-------+-------+----------
+ postgres | t1    | table | postgres
+ postgres | test5 | table | postgres
+(2 rows)
+

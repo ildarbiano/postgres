@@ -1,0 +1,39 @@
+postgres=# ------------------ создать таблицу sales разбелённую на секции PARTITION BY RANGE по значению (salesdate)
+DROP TABLE IF EXISTS sales;
+CREATE TABLE sales(name TEXT, salesdate timestamp)
+PARTITION BY RANGE (salesdate);
+CREATE TABLE sales_y2006_y2022 PARTITION OF sales
+    FOR VALUES FROM ('2000-01-01') TO ('2022-06-01');                   -- описание секции
+CREATE TABLE sales_y2022_m06 PARTITION OF sales
+    FOR VALUES FROM ('2022-06-01') TO ('2022-07-01');                   -- описание секции
+CREATE TABLE sales_y2022_m07 PARTITION OF sales
+    FOR VALUES FROM ('2022-07-01') TO ('2022-08-01');                   -- описание секции
+CREATE TABLE sales_y2022_m08 PARTITION OF sales
+    FOR VALUES FROM ('2022-08-01') TO ('2022-09-01');                   -- описание секции
+CREATE TABLE sales_y2022_y_2030 PARTITION OF sales
+    FOR VALUES FROM ('2022-09-01') TO ('2030-12-12');                   -- описание секции
+DROP TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+
+postgres=# -------------------- заполнить таблицу данными
+INSERT INTO sales(name, salesdate) VALUES
+('banana','20220801'),
+('banana','20220701'),
+('grape','20220615'),
+('berry','20220805'),
+('banana','20220910');
+INSERT 0 5
+
+ 
+postgres=# EXPLAIN SELECT * FROM sales WHERE salesdate = '2022-08-01';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Seq Scan on sales_y2022_m08 sales  (cost=0.00..25.00 rows=6 width=40)			-- только секция sales_y2022_m08
+   Filter: (salesdate = '2022-08-01 00:00:00'::timestamp without time zone)
+(2 rows)
+

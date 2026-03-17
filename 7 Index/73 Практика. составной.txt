@@ -1,0 +1,81 @@
+postgres=# CREATE INDEX idx_test_id_is_okay ON test_72(lower(is_okay));
+CREATE INDEX
+
+postgres=# explain
+select * from test_72 where lower(is_okay) = 'yes';			-- план выполнения SQL-запроса
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Bitmap Heap Scan on test_72  (cost=8.17..731.58 rows=500 width=31)
+   Recheck Cond: (lower(is_okay) = 'yes'::text)				-- Bitmap Index Scan — это умная стратегия PostgreSQL для эффективного поиска множества записей. Вместо того чтобы "прыгать" от одной записи к другой, он сначала составляет "карту сокровищ" (битовую карту), а затем собирает всё за один проход! 
+   ->  Bitmap Index Scan on idx_test_id_is_okay  (cost=0.00..8.04 rows=500 width=0)
+         Index Cond: (lower(is_okay) = 'yes'::text)
+(4 rows)
+
+postgres=# explain analyze
+select * from test_72 where lower(is_okay) = 'yes';			-- план выполнения SQL-запроса, так как параметр ANALYZE, то анализируемый оператор будет выполнен на самом деле, а в вывод добавятся фактические сведения о времени выполнения. Это помогает понять, насколько точны предварительные оценки планировщика.
+                                                            QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on test_72  (cost=8.17..731.58 rows=500 width=31) (actual time=1.112..8.281 rows=33260 loops=1)
+   Recheck Cond: (lower(is_okay) = 'yes'::text)
+   Heap Blocks: exact=767
+   ->  Bitmap Index Scan on idx_test_id_is_okay  (cost=0.00..8.04 rows=500 width=0) (actual time=0.970..0.970 rows=33260 loops=1)
+         Index Cond: (lower(is_okay) = 'yes'::text)
+ Planning Time: 0.107 ms
+ Execution Time: 10.038 ms
+(7 rows)
+
+
+postgres=# SELECT COUNT(*) as total_yes					-- Посчитать сколько получилось по итогу записей со значением поля is_okay= ‘Yes’
+FROM test_72
+WHERE lower(is_okay) = 'yes';
+ total_yes
+-----------
+     33260
+(1 row)
+
+========================== Улучшения индекса ===================================================
+postgres=# drop INDEX idx_test_id_is_okay;
+DROP INDEX
+
+postgres=# CREATE INDEX idx_test_is_okay_yes
+ON test_72(id)
+WHERE lower(is_okay) = 'yes';
+CREATE INDEX
+
+postgres=# SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'test_72';						-- запрос списка индексов:
+      indexname       |                                                  indexdef
+----------------------+-------------------------------------------------------------------------------------------------------------
+ idx_test_id          | CREATE INDEX idx_test_id ON postgres.test_72 USING btree (id)
+ idx_test_is_okay_yes | CREATE INDEX idx_test_is_okay_yes ON postgres.test_72 USING btree (id) WHERE (lower(is_okay) = 'yes'::text)
+(2 rows)
+
+
+========================== Bitmap Index Scan:
+Это комбинированный способ поиска, который объединяет скорость индекса с эффективностью чтения данных. Представьте, что это "двухэтапный поиск".
+Bitmap Index Scan (групповой поиск):
+	-Хорош для множества записей (сотни/тысячи)
+	-Сначала собирает ВСЕ адреса подходящих строк
+	-Затем читает их упорядоченно, минимизируя "прыжки"
+	-Особенно эффективно на SSD
+Index Scan (одиночный поиск):
+	-Хорош для нахождения небольшого количества записей (1-100)
+	-Для каждой подходящей строки: найти в индексе → прочитать строку → найти в индексе → прочитать...
+	-Много "прыжков" по таблице.
+
+======= Шаг 1: Bitmap Index Scan (построение битовой карты)
+text
+->  Bitmap Index Scan on idx_test_id_is_okay
+	PostgreSQL читает только индекс idx_test_id_is_okay
+	Создает "битовую карту" (bitmap) - массив битов, где:
+	1 = строка подходит под условие
+	0 = строка не подходит
+	Для ваших 100,000 строк: 0001010010001... (где 1 на позициях с 'yes')
+
+======= Шаг 2: Bitmap Heap Scan (чтение данных по карте)
+text
+->  Bitmap Heap Scan on test_72
+	PostgreSQL идет к таблице test_72
+	Читает только те строки, где в битовой карте стоит 1
+	Пропускает все 0

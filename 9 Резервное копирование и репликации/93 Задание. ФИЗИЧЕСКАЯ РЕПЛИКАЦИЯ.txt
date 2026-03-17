@@ -1,0 +1,41 @@
+-- Удалить 2 кластер, если он остался после предыдущих работ
+
+pg_lsclusters
+
+pg_ctlcluster 14 main2 stop
+
+pg_dropcluster 14 main2
+ 
+
+-- Создать новый кластер
+
+pg_createcluster -d /var/lib/postgresql/14/main2 14 main2
+ 
+
+-- Удалить все файлы данных из вновь созданного кластера
+
+rm -rf /var/lib/postgresql/14/main2
+ 
+
+-- Использовать утилиту pg_basebackup, чтобы создать физическую реплику (ключ -R)
+
+pg_basebackup -p 5432 -R -D /var/lib/postgresql/14/main2
+ 
+
+-- Запустить новый кластер
+
+pg_ctlcluster 14 main2 start
+ 
+
+-- Убедиться, что данные поступают
+
+-- на 1 ноде создадим таблицу и добавим 2 записи
+
+psql -c "CREATE TABLE testrepl(i int);"
+
+psql -c "INSERT INTO testrepl VALUES (1),(2);"
+ 
+
+-- на 2 ноде прочитаем данные из этой таблицы
+
+psql -p 5433 -c "SELECT * FROM testrepl;"

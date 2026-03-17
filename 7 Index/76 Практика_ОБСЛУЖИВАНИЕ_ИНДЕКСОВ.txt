@@ -1,0 +1,222 @@
+==================================== посмотреть раздутость индекса ========================================
+ilya@postgres:~$ sudo -u postgres psql -c "drop database if exists index_test;"			-- удалить
+could not change directory to "/home/ilya": Permission denied
+NOTICE:  database "index_test" does not exist, skipping
+DROP DATABASE
+
+ilya@postgres:~$ sudo -u postgres psql -c "create database index_test;"				-- создать
+could not change directory to "/home/ilya": Permission denied
+CREATE DATABASE
+
+ilya@postgres:~$ sudo -u postgres psql -c "\l"
+could not change directory to "/home/ilya": Permission denied
+                               List of databases
+    Name     |  Owner   | Encoding | Collate |  Ctype  |   Access privileges
+-------------+----------+----------+---------+---------+-----------------------
+ app         | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ buffer_temp | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ index_test  | postgres | UTF8     | C.UTF-8 | C.UTF-8 |					-- создана
+ postgres    | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ template0   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+ template1   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+(6 rows)
+
+ilya@postgres:~$ sudo -su postgres								--
+postgres@postgres:/home/ilya$ cd ~								--
+
+
+pgbench -i -s 10 index_test									-- 1/Создает тестовую БД с реалистичной структурой (банковская система); 2/Заполняет её 1 миллионом строк в основной таблице; 3/Готовит данные для нагрузочного тестирования; 4/Позволяет тестировать производительность, индексы, настройки.
+postgres@postgres:~$ pgbench -i -s 10 index_test
+pgbench	Утилита для нагрузочного тестирования PostgreSQL	Аналог: sysbench для MySQL
+-i			Initialize-инициализировать (заполнить) БД тестовыми данными		Без -i будет выполнять тесты
+-s 10			Scale factor-множитель масштаба						10 = 10× базовый размер
+index_test		Имя базы данных для тестирования					Должна существовать
+dropping old tables...
+NOTICE:  table "pgbench_accounts" does not exist, skipping
+NOTICE:  table "pgbench_branches" does not exist, skipping
+NOTICE:  table "pgbench_history" does not exist, skipping
+NOTICE:  table "pgbench_tellers" does not exist, skipping
+creating tables...
+generating data (client-side)...
+1000000 of 1000000 tuples (100%) done (elapsed 1.70 s, remaining 0.00 s)
+vacuuming...
+creating primary keys...
+done in 2.46 s (drop tables 0.00 s, create tables 0.01 s, client-side generate 1.73 s, vacuum 0.33 s, primary keys 0.38 s).
+
+
+postgres@postgres:~$ psql index_test -c "CREATE EXTENSION pgstattuple;"				-- создать расширение pgstattuple,-Это встроенное расширение PostgreSQL, которое показывает детальную статистику по таблицам и индексам на уровне отдельных кортежей (строк).
+CREATE EXTENSION
+
+postgres@postgres:~$ psql index_test -c "\d+ pgbench_accounts";					-- просмотр, расширенный, таблицы pgbench_accounts в базе банных index_test.
+                                         Table "public.pgbench_accounts"
+  Column  |     Type      | Collation | Nullable | Default | Storage  | Compression | Stats target | Description
+----------+---------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ aid      | integer       |           | not null |         | plain    |             |              |
+ bid      | integer       |           |          |         | plain    |             |           -- поле 'bid' без индекса.
+ abalance | integer       |           |          |         | plain    |             |              |
+ filler   | character(84) |           |          |         | extended |             |              |
+Indexes:
+    "pgbench_accounts_pkey" PRIMARY KEY, btree (aid)						-- индекс на поле 'aid'
+Access method: heap
+Options: fillfactor=100
+
+postgres@postgres:~$ psql index_test -c "SELECT * FROM pgstatindex('pgbench_accounts_pkey');"	-- просмотр статистики по индексам. pgstatindex-функция.
+ version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation
+---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
+       4 |          2 |   22487040 |           290 |             11 |       2733 |           0 |             0 |            90.06 |                  0
+(1 row)
+(END)
+
+
+postgres@postgres:~$ psql index_test -c "update pgbench_accounts set bid = bid + 1000000;"	-- обновление не ключевого поля;
+UPDATE 1000000
+postgres@postgres:~$ psql index_test -c "update pgbench_accounts set aid = aid + 1000000;"	-- обновление ключевого поля.
+UPDATE 1000000
+
+
+postgres@postgres:~$ psql index_test								--
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+index_test=#
+
+index_test=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_TABLEs WHERE relname = 'pgbench_accounts';										-- просмотр мёртвых записей
+     relname      | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+------------------+------------+------------+--------+-------------------------------
+ pgbench_accounts |    1002238 |          0 |      0 | 2026-01-13 07:27:59.252392+00
+(1 row)
+
+index_test=# update pgbench_accounts set bid = bid + 1000000;					-- повтор
+UPDATE 1000000
+index_test=# update pgbench_accounts set aid = aid + 1000000;					-- повтор
+UPDATE 1000000
+index_test=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_TABLEs WHERE relname = 'pgbench_accounts';
+     relname      | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+------------------+------------+------------+--------+-------------------------------
+ pgbench_accounts |    1002238 |    1999966 |    199 | 2026-01-13 07:27:59.252392+00		-- ожидаемо с концепций MVCC
+(1 row)
+
+
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx				-- статистика индекса
+-[ RECORD 1 ]------+----------
+version            | 4
+tree_level         | 2
+index_size         | 112320512									-- 112МВ занимает индекс
+root_block_no      | 290
+internal_pages     | 11
+leaf_pages         | 2733
+empty_pages        | 0
+deleted_pages      | 10966									-- мёртвые строчки
+avg_leaf_density   | 90.06
+leaf_fragmentation | 0
+
+index_test=# VACUUM pgbench_accounts;								--
+VACUUM
+index_test=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_TABLEs WHERE relname = 'pgbench_accounts';
+     relname      | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+------------------+------------+------------+--------+-------------------------------
+ pgbench_accounts |    1331266 |          0 |      0 | 2026-01-13 07:31:50.883636+00
+(1 row)
+
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+-[ RECORD 1 ]------+----------
+version            | 4
+tree_level         | 2
+index_size         | 112320512									-- после вакуума размер не сократился. Данные остались на месте.
+root_block_no      | 290
+internal_pages     | 11
+leaf_pages         | 2733
+empty_pages        | 0
+deleted_pages      | 10966									-- после вакуума не почистился. Данные остались на месте.
+avg_leaf_density   | 90.06
+leaf_fragmentation | 0
+
+								
+index_test=# VACUUM FULL pgbench_accounts;							-- на хайлоаде невозможно-требует исключительной блокировки всей таблицы, потому что VACUUM FULL делает копию таблицы и записывает туда только актуальные версии.
+VACUUM
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+-[ RECORD 1 ]------+---------
+version            | 4
+tree_level         | 2
+index_size         | 22487040									-- как новый
+root_block_no      | 290
+internal_pages     | 11
+leaf_pages         | 2733
+empty_pages        | 0
+deleted_pages      | 0										-- удалены
+avg_leaf_density   | 90.06
+leaf_fragmentation | 0
+
+index_test=# update pgbench_accounts set bid = bid + 1000000;					-- обновили не ключевое поле
+UPDATE 1000000
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+-[ RECORD 1 ]------+---------
+version            | 4
+tree_level         | 2
+index_size         | 44941312
+root_block_no      | 290
+internal_pages     | 20
+leaf_pages         | 5465
+empty_pages        | 0
+deleted_pages      | 0
+avg_leaf_density   | 83.9									-- уменьшилась плотность страниц
+leaf_fragmentation | 49.99									-- фрагментация страниц. Страницы не упорядочно расположены.
+
+index_test=# update pgbench_accounts set aid = aid + 1000000;					-- обновили ключевое поле
+UPDATE 1000000
+index_test=# VACUUM pgbench_accounts;								-- 
+VACUUM
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx				--
+-[ RECORD 1 ]------+---------
+version            | 4
+tree_level         | 2
+index_size         | 67403776									-- размер не уменьшается, растёт.
+root_block_no      | 290
+internal_pages     | 11
+leaf_pages         | 2733
+empty_pages        | 0
+deleted_pages      | 5483									-- пометил страницы
+avg_leaf_density   | 90.06
+leaf_fragmentation | 0										-- сделана фрагметация. Данные упорядочены
+
+
+index_test=# REINDEX INDEX CONCURRENTLY pgbench_accounts_pkey;					-- CONCURRENTLY-это важно, чтобы не завис и доступность индекса и данных сохранилась.
+REINDEX
+index_test=# SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+-[ RECORD 1 ]------+---------
+version            | 4
+tree_level         | 2
+index_size         | 22487040									-- как новый
+root_block_no      | 290
+internal_pages     | 11
+leaf_pages         | 2733
+empty_pages        | 0
+deleted_pages      | 0										-- удалены
+avg_leaf_density   | 90.06
+leaf_fragmentation | 0
+
+
+
+
+
+
+--------------------------------- и снова обновим все записи и посмотрим что будет
+
+update pgbench_accounts set bid = bid + 1000000;
+update pgbench_accounts set aid = aid + 1000000;
+SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+VACUUM pgbench_accounts;
+
+update pgbench_accounts set bid = bid + 1000000;
+SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+VACUUM pgbench_accounts;
+
+update pgbench_accounts set aid = aid + 1000000;
+SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+VACUUM pgbench_accounts;
+
+SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx
+
+REINDEX INDEX CONCURRENTLY pgbench_accounts_pkey;
+SELECT * FROM pgstatindex('pgbench_accounts_pkey') \gx

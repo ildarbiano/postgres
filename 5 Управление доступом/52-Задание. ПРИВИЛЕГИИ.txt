@@ -1,0 +1,24 @@
+-- привелегии
+
+CREATE TABLE testa(i int);
+
+INSERT INTO testa values (333), (444);
+ 
+
+-- выдадим права на эту таблицу юзеру test
+
+GRANT SELECT, UPDATE, INSERT ON testa TO test;
+
+\dp testa
+
+exit
+ 
+
+-- зайдем в Постгрес под новым пользователем
+
+sudo -u postgres psql -U test -h 127.0.0.1 -d postgres -W
+ 
+
+-- проверим доступ
+
+SELECT * FROM testa;

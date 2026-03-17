@@ -1,0 +1,214 @@
+============================== database
+postgres=# SELECT oid, datname, datistemplate, datallowconn FROM pg_database;		-- system catalog
+  oid  |   datname   | datistemplate | datallowconn				oid	-- Object Identify, физический. OID сквозной для всех БД.
+-------+-------------+---------------+--------------			datistemplate	-- является ли template True\False
+ 13759 | postgres    | f             | t				datallowconn	-- разрешено ли подключение True\False
+ 16519 | buffer_temp | f             | t
+     1 | template1   | t             | t
+ 13758 | template0   | t             | f
+(4 rows)
+
+postgres=# SELECT pg_size_pretty(pg_database_size('postgres'));				-- size БД в человекочитаемом виде
+ pg_size_pretty
+----------------
+ 8881 kB
+(1 row)
+ 
+postgres=# \dn										-- schema
+  List of schemas
+  Name  |  Owner
+--------+----------
+ public | postgres
+(1 row)
+ 
+postgres=# SELECT current_schema();							-- current schema
+ current_schema
+----------------
+ public
+(1 row)
+
+postgres=# SHOW search_path;								-- seach path-это корневой процесс, откуда выгружаются схемы. 
+   search_path
+-----------------
+ "$user", public
+(1 row)
+
+postgres=# \d pg_database								-- system view из pg_catalog
+               Table "pg_catalog.pg_database"						-- местоположение
+    Column     |   Type    | Collation | Nullable | Default
+---------------+-----------+-----------+----------+---------
+ oid           | oid       |           | not null |
+ datname       | name      |           | not null |
+ datdba        | oid       |           | not null |
+ encoding      | integer   |           | not null |
+ datcollate    | name      |           | not null |
+ datctype      | name      |           | not null |
+ datistemplate | boolean   |           | not null |
+ datallowconn  | boolean   |           | not null |
+ datconnlimit  | integer   |           | not null |
+ datlastsysoid | oid       |           | not null |
+ datfrozenxid  | xid       |           | not null |
+ datminmxid    | xid       |           | not null |
+ dattablespace | oid       |           | not null |
+ datacl        | aclitem[] |           |          |
+Indexes:
+    "pg_database_oid_index" PRIMARY KEY, btree (oid), tablespace "pg_global"
+    "pg_database_datname_index" UNIQUE CONSTRAINT, btree (datname), tablespace "pg_global"
+Tablespace: "pg_global"
+
+
+select * from pg_database;								-- system view
+  oid  |   datname   | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |               datacl
+-------+-------------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------------
+ 13759 | postgres    |     10 |        6 | C.UTF-8    | C.UTF-8  | f             | t            |           -1 |         13758 |          726 |          1 |          1663 |
+ 16519 | buffer_temp |     10 |        6 | C.UTF-8    | C.UTF-8  | f             | t            |           -1 |         13758 |          726 |          1 |          1663 |
+     1 | template1   |     10 |        6 | C.UTF-8    | C.UTF-8  | t             | t            |           -1 |         13758 |          726 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
+ 13758 | template0   |     10 |        6 | C.UTF-8    | C.UTF-8  | t             | f            |           -1 |         13758 |          726 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
+(4 rows)
+
+
+
+SHOW search_path;
+-- SET search_path to .. - в рамках сессии
+-- параметр можно установить и на уровне отдельной базы данных:
+-- ALTER DATABASE otus SET search_path = public, special;
+-- в рамках кластера в файле postgresql.conf
+
+ 
+-- интересное поведение и search_path
+\d pg_database
+CREATE TABLE pg_database(i int);
+-- все равно видим pg_catalog.pg_database
+\d pg_database
+-- чтобы получить доступ к толко что созданной таблице используем указание схемы
+\d public.pg_database
+SELECT * FROM pg_database limit 1;
+  
+
+=========================== TABLE в разных SCHEMA:
+postgres=# CREATE TABLE t1(i int);
+CREATE TABLE
+postgres=#
+CREATE SCHEMA postgres;
+CREATE SCHEMA
+postgres=# CREATE TABLE t2(i int);
+CREATE TABLE
+postgres=# \dt
+            List of relations
+  Schema  |   Name    | Type  |  Owner
+----------+-----------+-------+----------
+ postgres | t2        | table | postgres					-- другая схема
+ public   | accounts  | table | postgres
+ public   | persons   | table | postgres
+ public   | t1        | table | postgres
+ public   | test      | table | postgres
+ public   | test_text | table | postgres
+(6 rows)
+
+postgres=# CREATE TABLE t1(i int);
+CREATE TABLE
+postgres=# \dt
+            List of relations
+  Schema  |   Name    | Type  |  Owner
+----------+-----------+-------+----------
+ postgres | t1        | table | postgres					-- пересозжалась в новой схеме
+ postgres | t2        | table | postgres
+ public   | accounts  | table | postgres
+ public   | persons   | table | postgres
+ public   | test      | table | postgres
+ public   | test_text | table | postgres
+(6 rows)
+
+\dt+
+
+postgres=# \dt public.*
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1        | table | postgres
+ public | test      | table | postgres
+ public | test_text | table | postgres
+(5 rows)
+
+
+postgres=# SET search_path TO public, "$user";					-- настраивает путь поиска схем для текущей сессии PostgreSQL. Это одна из самых важных команд для управления пространством имен в БД. Что это значит простыми словами:
+					Представьте, что у вас есть несколько папок (схем) в базе данных:
+									public — общая папка (по умолчанию)
+									$user — ваша личная папка (с именем пользователя)
+									sales — папка для отдела продаж
+									hr — папка для отдела кадров
+Команда SET search_path TO public, "$user"; говорит PostgreSQL: "Когда ищешь таблицу, сначала смотри в папке public, если не найдешь — ищи в моей личной папке".
+SET
+postgres=# \dt
+            List of relations
+  Schema  |   Name    | Type  |  Owner
+----------+-----------+-------+----------
+ postgres | t2        | table | postgres
+ public   | accounts  | table | postgres
+ public   | persons   | table | postgres
+ public   | t1        | table | postgres
+ public   | test      | table | postgres
+ public   | test_text | table | postgres
+(6 rows)
+postgres=# SET search_path TO public, "$user";						-- это настройка приоритета поиска таблиц. Она делает работу удобнее, но требует понимания, чтобы избежать неожиданностей. Используйте её для удобства разработки, но в продакшене лучше указывать схемы явно. Проверка работы:
+sql
+-- Тест 1: Проверить текущие настройки
+SHOW search_path;
+
+-- Тест 2: Создать тестовые объекты
+CREATE SCHEMA IF NOT EXISTS my_schema;
+CREATE TABLE my_schema.test1 (id int);
+CREATE TABLE public.test1 (id int);
+
+-- Тест 3: Поиск без указания схемы
+SET search_path TO public, my_schema;
+SELECT * FROM test1;  									-- найдет public.test1
+
+SET search_path TO my_schema, public;
+SELECT * FROM test1;  									-- найдет my_schema.test1
+------------------------------------------------------------------------------------------------
+
+SET search_path TO public, "$user", pg_catalog;
+\dt
+create temp table t1(i int);
+\dt
+SET search_path TO public, "$user", pg_catalog, pg_temp;
+\dt
+ 
+
+================================= перенос таблиц между схемами:
+postgres=# ALTER TABLE t2 SET SCHEMA public;						-- при этом меняется только запись в pg_class, физически данные остаются на том же месте, у них останется тот же oid.
+ALTER TABLE
+postgres=# \dt
+           List of relations
+ Schema |   Name    | Type  |  Owner
+--------+-----------+-------+----------
+ public | accounts  | table | postgres
+ public | persons   | table | postgres
+ public | t1        | table | postgres
+ public | t2        | table | postgres
+ public | test      | table | postgres
+ public | test_text | table | postgres
+(6 rows)
+
+
+CREATE TABLE public.t10(i int);							-- чтобы не было вопросов указываем схему прямо при создании
+
+
+=================================================== type of relations. Виды отновшений в БД:
+postgres=# SELECT relkind, count(*) FROM pg_class GROUP BY relkind;		-- relkind — это системный столбец в таблице pg_class PostgreSQL, который указывает тип отношения (объекта). Это одна из самых важных системных характеристик для идентификации типа объекта в БД.
+ relkind | count
+---------+-------
+ r       |    73								-- ordinary table. Обычная таблица
+ v       |   139								-- view. Системные представления.
+ i       |   158								-- index
+ t       |    41								-- TOAST table. таблица (для больших значений)
+ S       |     1								-- sequence
+(5 rows)
+relkind — это ключевая характеристика каждого объекта в PostgreSQL, которая позволяет:
+		Идентифицировать тип объекта (таблица, индекс, представление и т.д.)
+		Фильтровать объекты в запросах к системным каталогам
+		Автоматизировать администрирование (бэкапы, проверки)
+		Понимать структуру базы данных на системном уровне

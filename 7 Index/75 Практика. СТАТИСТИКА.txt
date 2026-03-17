@@ -1,0 +1,257 @@
+# stats
+postgres=# SELECT * FROM pg_stat_database WHERE datname = 'postgres';			-- статистика Базы данных 'postgres'
+ datid | datname  | numbackends | xact_commit | xact_rollback | blks_read | blks_hit  | tup_returned | tup_fetched | tup_inserted | tup_updated | tup_deleted | conflicts | temp_files | temp_bytes  | deadlocks | checksum_failures | checksum_last_failure | blk_read_time | blk_write_time | session_time  | active_time | idle_in_transaction_time | sessions | sessions_abandoned | sessions_fatal | sessions_killed |          stats_reset
+-------+----------+-------------+-------------+---------------+-----------+-----------+--------------+-------------+--------------+-------------+-------------+-----------+------------+-------------+-----------+-------------------+-----------------------+---------------+----------------+---------------+-------------+--------------------------+----------+--------------------+----------------+-----------------+-------------------------------
+ 13759 | postgres |           1 |        5761 |           521 |   4684853 | 638476714 |      4573487 |      317519 |    630670794 |         131 |         182 |         0 |         29 | 28001400000 |         2 |                   |                       |             0 |              0 | 174618235.493 | 1719789.963 |              9213641.866 |      502 |                  2 |              0 |               1 | 2025-12-22 13:14:38.894963+00
+(1 row)
+
+
+
+
+postgres=# CREATE TABLE stat_75 (
+    a   int,
+    b   int
+);
+CREATE TABLE
+
+
+postgres=# INSERT INTO stat_75 SELECT i/100, i/500
+                 FROM generate_series(1,1000000) s(i);						--
+INSERT 0 1000000
+postgres=# select * from stat_75 limit 11;							-- 
+ a | b
+---+---
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+ 0 | 0
+(11 rows)
+
+postgres=# select * from stat_75 order by a desc limit 5;					-- 
+   a   |  b
+-------+------
+ 10000 | 2000
+  9999 | 1999
+  9999 | 1999
+  9999 | 1999
+  9999 | 1999
+(5 rows)
+
+
+postgres=# ANALYZE stat_75;									-- 
+ANALYZE
+postgres=# EXPLAIN ANALYZE
+SELECT * FROM stat_75
+WHERE (a = 1) AND (b = 0);									--
+                                                      QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..11675.10 rows=1 width=8) (actual time=0.258..52.286 rows=100 loops=1)	-- получили 100 строк, что означает не удачное выделение памяти.
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on stat_75  (cost=0.00..10675.00 rows=1 width=8) (actual time=30.078..46.300 rows=33 loops=3)	
+												-- планировалось 1 строка
+         Filter: ((a = 1) AND (b = 0))
+         Rows Removed by Filter: 333300
+ Planning Time: 0.077 ms
+ Execution Time: 52.356 ms						-- !!!
+(8 rows)
+
+
+
+postgres=# CREATE STATISTICS s1 (dependencies)				-- Создадим коррелированную статистику и посмотрим разницу:
+ON a, b
+FROM stat_75;
+CREATE STATISTICS
+
+postgres=# ANALYZE stat_75;
+ANALYZE
+postgres=# EXPLAIN ANALYZE
+SELECT * FROM stat_75
+WHERE (a = 1) AND (b = 0);
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..11685.00 rows=100 width=8) (actual time=0.404..47.943 rows=100 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Seq Scan on stat_75  (cost=0.00..10675.00 rows=42 width=8) (actual time=27.146..41.938 rows=33 loops=3)
+         Filter: ((a = 1) AND (b = 0))
+         Rows Removed by Filter: 333300
+ Planning Time: 0.212 ms
+ Execution Time: 47.968 ms						-- время выполнения снизилось, против !!!
+(8 rows)
+
+
+
+
+postgres=# SELECT * FROM pg_stat_activity;
+
+ datid | datname  |  pid  | leader_pid | usesysid | usename  | application_name | client_addr | client_hostname | client_port |         backend_start         |          xact_start          |         query_start          |         state_change          | wait_event_type |     wait_event      | state  | backend_xid | backend_xmin | query_id |              query              |         backend_type
+-------+----------+-------+------------+----------+----------+------------------+-------------+-----------------+-------------+-------------------------------+------------------------------+------------------------------+-------------------------------+-----------------+---------------------+--------+-------------+--------------+----------+---------------------------------+------------------------------
+       |          |   704 |            |          |          |                  |             |                 |             | 2026-01-12 06:30:53.027668+00 |                              |                              |                               | Activity        | AutoVacuumMain      |        |             |              |          |                                 | autovacuum launcher
+       |          |   706 |            |       10 | postgres |                  |             |                 |             | 2026-01-12 06:30:53.028286+00 |                              |                              |                               | Activity        | LogicalLauncherMain |        |             |              |          |                                 | logical replication launcher
+ 13759 | postgres | 91440 |            |       10 | postgres | psql             |             |                 |          -1 | 2026-01-12 13:51:16.040673+00 | 2026-01-12 14:17:32.55612+00 | 2026-01-12 14:17:32.55612+00 | 2026-01-12 14:17:32.556123+00 |                 |                     | active |             |          863 |          | SELECT * FROM pg_stat_activity; | client backend
+       |          |   702 |            |          |          |                  |             |                 |             | 2026-01-12 06:30:53.028319+00 |                              |                              |                               | Activity        | BgWriterMain        |        |             |              |          |                                 | background writer
+       |          |   701 |            |          |          |                  |             |                 |             | 2026-01-12 06:30:53.02621+00  |                              |                              |                               | Activity        | CheckpointerMain    |        |             |              |          |                                 | checkpointer
+       |          |   703 |            |          |          |                  |             |                 |             | 2026-01-12 06:30:53.027115+00 |                              |                              |                               | Activity        | WalWriterMain       |        |             |              |          |                                 | walwriter
+(6 rows)
+(END)
+postgres=# SELECT * FROM pg_stat_activity \dx						-- для удобства восприятия. \dx - список расширений базы данных. Что делает:
+\d = "describe" (описание). x = "extensions" (расширения). Вертикальный формат (расширенный):
+                                 List of installed extensions
+      Name      | Version |   Schema   |                      Description
+----------------+---------+------------+-------------------------------------------------------
+ pageinspect    | 1.9     | public     | inspect the contents of database pages at a low level
+ pg_buffercache | 1.3     | public     | examine the shared buffer cache
+ pg_prewarm     | 1.2     | public     | prewarm relation data
+ plpgsql        | 1.0     | pg_catalog | PL/pgSQL procedural language
+(4 rows)
+
+postgres=# SELECT * FROM pg_stat_activity \gx						-- для удобства восприятия. \gx - формат вывода "расширенный". Что делает:
+\g = "go" (выполнить предыдущий запрос). x = "expanded" (расширенный формат). использовать \gx когда много столбцов в результате, когда нужно четко видеть значения каждого поля, для отладки и анализа. Вывод будет в ВЕРТИКАЛЬНОМ формате, Вертикальный формат (расширенный)::
+-[ RECORD 1 ]----+--------------------------------
+datid            |
+datname          |
+pid              | 704
+leader_pid       |
+usesysid         |
+usename          |
+application_name |
+client_addr      |
+client_hostname  |
+client_port      |
+backend_start    | 2026-01-12 06:30:53.027668+00
+xact_start       |
+query_start      |
+state_change     |
+wait_event_type  | Activity
+wait_event       | AutoVacuumMain
+state            |
+backend_xid      |
+backend_xmin     |
+query_id         |
+query            |
+backend_type     | autovacuum launcher
+-[ RECORD 2 ]----+--------------------------------
+datid            |
+datname          |
+pid              | 706
+leader_pid       |
+usesysid         | 10
+usename          | postgres
+application_name |
+client_addr      |
+client_hostname  |
+client_port      |
+backend_start    | 2026-01-12 06:30:53.028286+00
+xact_start       |
+query_start      |
+state_change     |
+wait_event_type  | Activity
+wait_event       | LogicalLauncherMain
+:
+
+
+postgres=# SELECT * FROM pg_stat_user_tables
+WHERE relname = 'stat_75' \gx								-- статистика по таблице
+-[ RECORD 1 ]-------+------------------------------
+relid               | 16717
+schemaname          | postgres
+relname             | stat_75
+seq_scan            | 10
+seq_tup_read        | 3000011								-- сколько Tuple (Кортеж) читалось
+idx_scan            |									-- сколько Tuple (Кортеж) читалось по индексу
+idx_tup_fetch       |
+n_tup_ins           | 1000000
+n_tup_upd           | 0
+n_tup_del           | 0
+n_tup_hot_upd       | 0
+n_live_tup          | 1000000								-- сколько Tuple (Кортеж) живых
+n_dead_tup          | 0									-- сколько Tuple (Кортеж) мёртвых
+n_mod_since_analyze | 0
+n_ins_since_vacuum  | 0
+last_vacuum         |
+last_autovacuum     | 2026-01-12 14:05:10.072784+00					-- когда приходил автовакуум
+last_analyze        | 2026-01-12 14:14:42.077476+00
+last_autoanalyze    | 2026-01-12 14:05:10.382692+00
+vacuum_count        | 0
+autovacuum_count    | 1
+analyze_count       | 2
+autoanalyze_count   | 1
+
+------------------------------------- TUP = TUPLE (произносится "тапл") - это строка данных в таблице PostgreSQL.
+Простое объяснение:		Tuple = Запись = Строка таблицы
+Аналогия:			Exel file 	= Data base
+				Таблица 	= Excel-лист
+				Tuple 		= Одна строка в Excel
+				Column 		= Ячейка в строке
+
+postgres=# create index test_idx
+postgres-# on stat_75(a);								-- создан индекс
+CREATE INDEX
+
+postgres=# select * from stat_75 where a = 2000;					-- выборка с индексом
+
+postgres=#
+SELECT * FROM pg_stat_user_indexes
+WHERE relname = 'stat_75' \gx								-- 
+-[ RECORD 1 ]-+---------
+relid         | 16717
+indexrelid    | 16721
+schemaname    | postgres								-- схема индекса
+relname       | stat_75
+indexrelname  | test_idx								-- имя индекса
+idx_scan      | 1									-- кол-во запусков
+idx_tup_read  | 100									-- количество записей было выдано
+idx_tup_fetch | 100
+
+postgres=#
+SELECT * FROM pg_stat_user_indexes  \gx							-- выбрать все индексы текущей Базы данных
+
+-[ RECORD 1 ]-+---------------------
+relid         | 16661
+indexrelid    | 16668
+schemaname    | postgres
+relname       | goods
+indexrelname  | goods_pkey
+idx_scan      | 0
+idx_tup_read  | 0
+idx_tup_fetch | 0
+-[ RECORD 2 ]-+---------------------
+relid         | 16695
+indexrelid    | 16702
+schemaname    | postgres
+relname       | test_72
+indexrelname  | idx_test_id
+idx_scan      | 1
+idx_tup_read  | 1
+idx_tup_fetch | 1
+-[ RECORD 3 ]-+---------------------
+relid         | 16695
+indexrelid    | 16704
+schemaname    | postgres
+relname       | test_72
+indexrelname  | idx_test_is_okay_yes
+idx_scan      | 0
+idx_tup_read  | 0
+idx_tup_fetch | 0
+-[ RECORD 4 ]-+---------------------
+relid         | 16717
+indexrelid    | 16721
+schemaname    | postgres
+relname       | stat_75
+indexrelname  | test_idx
+idx_scan      | 1
+idx_tup_read  | 100
+idx_tup_fetch | 100
+-[ RECORD 5 ]-+---------------------
+relid         | 16705
+indexrelid    | 16715
+schemaname    | postgres
+:q

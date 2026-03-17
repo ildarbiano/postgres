@@ -1,0 +1,43 @@
+-- Использовать 2 сервера с предыдущего урока
+
+-- Сделать promote 2 сервера - получить 2 отдельных сервера
+
+pg_ctlcluster 14 main2 promote
+  
+
+-- Включить логический уровень журналирования на 1 сервере
+
+psql
+
+ALTER SYSTEM SET wal_level = logical;
+
+\q
+  
+
+-- Перезагрузить 1 сервер
+
+pg_ctlcluster 14 main restart
+  
+
+-- Создать публикацию таблицы на 1 сервере
+
+CREATE PUBLICATION test_pub FOR TABLE test;
+  
+
+-- Подписаться на эту публикацию на 2 сервере
+
+CREATE SUBSCRIPTION test_sub 
+
+CONNECTION 'host=localhost port=5432 user=postgres password=123 dbname=postgres' 
+
+PUBLICATION test_pub WITH (copy_data = false);
+  
+
+-- Добавить запись на 1 сервере в эту таблицу
+
+INSERT INTO test VALUES (1);
+  
+
+-- Убедиться, что она появилась на 2 сервере
+
+SELECT * FROM test;

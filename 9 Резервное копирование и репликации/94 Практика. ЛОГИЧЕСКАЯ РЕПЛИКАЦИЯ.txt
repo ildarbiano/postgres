@@ -1,0 +1,46 @@
+1/	Будем использовать 2 сервера с предыдущего урока
+2/	Сделаем promote 2 сервера - получим 2 отдельных сервера!
+3/	Создадим публикацию таблицы на 1 сервере
+4/	Подпишемся на эту публикацию на 2 сервере
+5/	Добавим запись на 1 сервере в эту таблицу и убедимся, что она появилась на 2 сервере
+
+
+pg_ctlcluster 14 main2 promote						-- Логическая репликация. Получим логически другой сервер.
+ 
+psql
+ALTER SYSTEM SET wal_level = logical;					-- включим логический уровень журналирования на 1 сервере
+
+\q
+ 
+pg_ctlcluster 14 main restart						-- Рестартуем кластер
+ 
+
+-- На первом сервере создаем публикацию:
+psql
+CREATE TABLE testlogical(i int);					-- таблица
+CREATE PUBLICATION test_pub FOR TABLE testlogical;			-- На первом сервере создаем публикацию "test_pub"
+ \dRp+									-- посмотрим публикации
+ 
+
+-- создадим подписку на втором экземпляре
+-- DDL команды не реплицируются!!!!
+psql -p 5433
+CREATE TABLE testlogical(i int);
+ 
+
+--создадим подписку к БД по Порту с Юзером и Паролем и Копированием данных=false
+CREATE SUBSCRIPTION test_sub 
+CONNECTION 'host=localhost port=5432 user=postgres password=123 dbname=postgres' 
+PUBLICATION test_pub WITH (copy_data = false);				-- означает, выполняется ли миграция или нет.
+ 
+
+\dRs									-- посмотрим подписки
+SELECT * FROM pg_stat_subscription \gx					-- можно отследивать живость репликации
+ 
+
+-- добавим данные на 1 кластере
+INSERT INTO testlogical VALUES (1);
+ 
+
+-- посмотрим, что появилось на 2
+SELECT * FROM testlogical;

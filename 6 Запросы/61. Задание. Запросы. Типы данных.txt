@@ -1,0 +1,24 @@
+-- Создать таблицу accounts с полями следующих типов:
+
+-- целое с автоувеличением
+
+-- текстовое для фамилии и инициалов
+
+-- дата для даты создания
+
+-- денежный для количества денег на счете
+
+CREATE TABLE accounts(
+
+  id SERIAL PRIMARY KEY,
+
+  family TEXT,
+
+  created_at TIMESTAMP DEFAULT now(),
+
+  balance DECIMAL(12,2)
+
+);
+-- Посмотреть структуру созданной таблицы
+
+\dt+ accounts

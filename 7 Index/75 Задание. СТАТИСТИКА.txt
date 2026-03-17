@@ -1,0 +1,25 @@
+-- Создать таблицу из 100 000 строк
+CREATE TABLE t1 (
+    a   int,
+    b   int
+);
+
+INSERT INTO t1 SELECT i/100, i/500
+                 FROM generate_series(1,100000) s(i);
+
+
+
+
+-- Сделать несколько запросов
+SELECT * FROM t1 LIMIT 10;
+SELECT * FROM t1 LIMIT 100;
+
+
+
+-- Проанализировать таблицу
+ANALYZE t1;
+
+
+
+-- Посмотреть статистику по таблице
+SELECT * FROM pg_stat_user_tables WHERE relname = 't1' \gx

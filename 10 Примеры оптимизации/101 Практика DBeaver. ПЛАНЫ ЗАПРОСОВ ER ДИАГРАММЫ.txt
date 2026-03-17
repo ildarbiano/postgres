@@ -1,0 +1,97 @@
+
+-- joins
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS sklad;
+CREATE TABLE sklad(name TEXT, price DECIMAL(12,2));
+INSERT INTO sklad(name, price) VALUES
+('apple',100),
+('banana',100.50),
+('grape',55.44),
+('berry',33.3);
+
+CREATE TABLE sales(name TEXT, quant DECIMAL(12,3));
+INSERT INTO sales(name, quant) VALUES
+('banana',300),
+('banana',100),
+('grape',400.100),
+('berry',500),
+('banana',300);
+ 
+-- left
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name;
+ 
+
+-- *
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name
+  WHERE sales.quant IS NULL;
+ 
+
+-- inner joins
+EXPLAIN SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+INNER JOIN sales
+  ON sklad.name = sales.name;
+
+
+-------------------- Dbeaver. Подключиться к db.postges
+EXPLAIN (FORMAT JSON) SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name
+  WHERE sales.quant IS NULL;
+  
+-------------------- загрузка JSON в https://tatiyants.com/pev/#/plans/new в окно "execution 'JSON' plan
+
+
+"
+-------------------- ПОСТРОИМ ER-МОДЕЛЬ
+-- создадим 2 таблицы с первичным и внешним ключами. Два ключа позволят связать две таблицы, для ускоренной отработки Индекса.
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS sklad;
+CREATE TABLE sklad(
+    id SERIAL PRIMARY KEY, 						-- первичный ключ PRIMARY KEY генерируем автоматически id SERIAL, для связи товаров. 'Под капотом' на PRIMARY KEY создастся ИНДЕКС.
+    name TEXT, 								-- не используем в качестве первичного ключа, потому что занимаем больше информации, что замедлит работц ИНДЕКСа.
+    price DECIMAL(12,2)
+);
+
+INSERT INTO sklad(name, price) VALUES
+('apple',100),
+('banana',100.50),
+('grape',55.44),
+('berry',33.3);
+   
+
+CREATE TABLE sales(
+    id SERIAL, 								-- было бы правильно написать id SERIAL PRIMARY KEY, для большей наглядности в DBeaver
+    fk_sklad INT references sklad(id), 					-- references внешний ключ "fk_sklad" с полем типа INT, ссылается на поле id продукта из таблицы "sklad"
+    quant DECIMAL(12,3)
+);
+
+INSERT INTO sales(fk_sklad, quant) VALUES
+(2,300),								-- не по текстовому полю наименования продукта, а по его id, который занимает 4Байта, что быстрее для поиска с помощбю ИНДЕКСА.
+(2,100),
+(3,400.100),
+(4,500),
+(2,300);
+  
+
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.id = sales.fk_sklad;
+
+----------------------- обновить таблицу и понять, что ER-таблица и структура в DBeaver не поменяется, потому как id не изменится.
+UPDATE sklad SET name = 'apple2' WHERE name = 'apple';
+
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.id = sales.fk_sklad;
+-- кроме экономии места - ускоряем всю работу и делаем сущности развязанными
+-- построим ER диаграмму в DBeaver

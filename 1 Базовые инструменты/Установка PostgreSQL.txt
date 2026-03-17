@@ -1,0 +1,80 @@
+================ Варианты установки PostgreSQL
+1	on-premise на любой ОС (https://www.postgresql.org/download/)
+2	из репозитория Linux (команда sudo apt install postgresql)
+3	используя репозиторий postgresql (https://www.postgresql.org/download/linux/ubuntu/)
+4	собрать PostgreSQL из исходных кодов на языке С
+5	docker контейнер
+6	kubernetes
+   
+
+==== 1 ==================== On-premise =============================
+на любой ОС 
+https://www.postgresql.org/download/
+Установка из файла - в случае:
+Windows 	*.exe, в 
+Linux 		*.rpm из магазина и т.д.
+Далее просто нажимая кнопки Далее мы установим PostgreSQL на Виртуальную машину как приложение.
+
+	Обычно используется в качестве тестового окружения, так как требует GUI для установки, а на промышленных серверах используется только консольные сервера, без графической оболочки
+
+*- В курсе будет использоваться данный вариант.
+
+   
+
+==== 2 ==================== Из репозитория Linux =================================
+sudo apt-get update
+sudo apt install postgresql
+Самый простой вариант. 
+Минус - версия Постгреса будет зависеть от версии ОС. 
+Ubuntu22.04 - Постгрес 14,
+Ubuntu20.04 - Постгрес 12 
+и так далее.
+*-	В целом тоже можно использовать в продуктовой среде.
+
+psql --version
+which psql				#---путь
+apt-cache policy postgresql
+ss -tulnp				#---ports listening
+sudo systemctl status postgresql	
+ps -A | grep postgres
+sudo apt install net-tools
+sudo netstat -tulnp | grep postgres
+tcp        0      0 127.0.0.1:5432          0.0.0.0:*               LISTEN      3819/postgres
+
+   
+
+==== 3 ==================== Используя репозиторий postgresql =======================
+https://www.postgresql.org/download/linux/ubuntu/
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+sudo apt-get update
+sudo apt-get -y install postgresql-12/13/14
+Позволяет установить нужную нам версию Постгреса 9.6-14. Это вариант готовый для продакшна.
+
+   
+
+==== 4 ==================== Собрать PostgreSQL из исходных кодов на языке С =========
+Самый сложный вариант. Очень редко используется в продакшн. Обычно предназначен для добавления собственного функционала в исходный код Posg.
+
+скачиваем исходные коды с ftp postgresql.org https://ftp.postgresql.org/pub/source
+далее даже самая короткая инструкция довольно обширна: 
+INSTALL Short Version
+./configure
+make
+su
+make install
+adduser postgres
+mkdir /usr/local/pgsql/data
+chown postgres /usr/local/pgsql/data
+su - postgres
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data
+/usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data -l logfile start
+/usr/local/pgsql/bin/createdb test
+/usr/local/pgsql/bin/psql test
+   
+
+==== 5+6 ==================== Docker-контейнер & kubernetes
+https://hub.docker.com/_/postgres
+https://postgres-operator.readthedocs.io/en/latest/
+
+Предназначены для автоматизированного развертывания Постгреса в промышленных масштабах, а также для использования в микросервисной архитектуре.

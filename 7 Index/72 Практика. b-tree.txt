@@ -1,0 +1,101 @@
+create table test_72 as 
+select generate_series as id								-- Каждая строка получает уникальный ID, будет колонка номер 1(id).
+	, generate_series::text || (random() * 10)::text as col2 			-- generate_series::text - преобразует число в текст. random() * 10 - случайное число от 0 до 10. || - склеивает оба текста в колонке номер 2(col2).
+	, (array['Yes', 'No', 'Maybe'])[floor(random() * 3 + 1)] as is_okay		-- Случайно выбирает один из: 'Yes', 'No', 'Maybe'. random() * 3 + 1 дает число от 1.0 до 4.0 . floor() округляет вниз: 1, 2 или 3. Используется как индекс массива. Колонка номер 3(is_okay)	
+from generate_series(1, 100000);							-- Генерирует числа от 1 до 100,000
+create index idx_test_id on test_72(id);
+----------------------------
+select generate_series as id								-- Каждая строка получает уникальный ID, будет колонка номер 1.
+from generate_series(1, 100000)								-- Генерирует числа от 1 до 100,000
+----------------------------
+postgres=# create table test_72 as
+select generate_series as id
+        , generate_series::text || (random() * 10)::text as col2
+        , (array['Yes', 'No', 'Maybe'])[floor(random() * 3 + 1)] as is_okay
+from generate_series(1, 100000);
+create index idx_test_id on test_72(id);
+SELECT 100000
+CREATE INDEX
+
+postgres=# SELECT COUNT(*) FROM test_72;						-- подсчёт строк таблицы, для подтверждения задания на создание таблицы в 100'000 строк.
+ count
+--------
+ 100000
+(1 row)
+
+
+postgres=# SELECT * FROM test_72 LIMIT 5;						-- Вывести пример данных таблицы.
+ id |        col2         | is_okay
+----+---------------------+---------
+  1 | 19.901629649382429  | Yes
+  2 | 29.021683703397656  | Yes
+  3 | 35.99494425774445   | Maybe
+  4 | 41.632420626975204  | Yes
+  5 | 50.5033729676078025 | Yes
+(5 rows)
+
+postgres=# SELECT is_okay, COUNT(*) FROM test_72 GROUP BY is_okay;			-- подсчёт строк таблицы, сгруппированных по колонке "is_okay", то есть распределение 100000 строк по признаку колонки.
+ is_okay | count
+---------+-------
+ No      | 33441
+ Yes     | 33260
+ Maybe   | 33299
+(3 rows)
+
+
+postgres=# EXPLAIN SELECT * FROM test_72 WHERE id = 777;				-- Команда EXPLAIN в PostgreSQL выводит план выполнения SQL-запроса, генерируемый планировщиком для заданного оператора. Этот план показывает, как будут сканироваться таблицы (последовательно, по индексу и пр.) и какой алгоритм соединения будет объединять считанных из них строки. Также EXPLAIN показывает ожидаемую стоимость выполнения оператора, то есть затраты на его выполнение, которые обычно означают число обращений к странице на диске. 
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using idx_test_id on test_72  (cost=0.29..8.31 rows=1 width=31)		-- Index Scan — тип сканирования. (cost=0.29..8.31 rows=1 width=31) — оценка стоимости: cost=0.29..8.31 — предполагаемая стоимость операции. 0.29 — стоимость начала операции (чтение индекса). 8.31 — общая стоимость (чтение индекса + чтение данных из таблицы). rows=1 — ожидаемое количество строк в результате. width=31 — средний размер одной строки в байтах
+   Index Cond: (id = 777)								-- Условие поиска по индексу: id = 777
+(2 rows)
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+postgres=# EXPLAIN SELECT * FROM test_72 WHERE id = 777;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Index Scan using idx_test_id on test_72  (cost=0.29..8.31 rows=1 width=31)
+   Index Cond: (id = 777)
+(2 rows)
+
+
+postgres=# EXPLAIN analyze SELECT * FROM test_72 WHERE id = 777;
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_test_id on test_72  (cost=0.29..8.31 rows=1 width=31) (actual time=0.056..0.057 rows=1 loops=1)
+   Index Cond: (id = 777)
+ Planning Time: 0.073 ms											
+ Execution Time: 0.075 ms								-- Если к команде EXPLAIN добавить параметр ANALYZE, то анализируемый оператор будет выполнен на самом деле, а в вывод добавятся фактические сведения о времени выполнения. Это помогает понять, насколько точны предварительные оценки планировщика.	
+(4 rows)
+
+
+postgres=# EXPLAIN SELECT * FROM test_72 WHERE col2 LIKE '%777%';
+                         QUERY PLAN
+------------------------------------------------------------
+ Seq Scan on test_72  (cost=0.00..2017.00 rows=10 width=31)
+   Filter: (col2 ~~ '%777%'::text)
+(2 rows)
+
+
+postgres=# DROP INDEX idx_test_id;							-- удаление индекса.
+DROP INDEX
+postgres=# EXPLAIN analyze SELECT * FROM test_72 WHERE id = 777;
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Seq Scan on test_72  (cost=0.00..2017.00 rows=1 width=31) (actual time=0.058..12.924 rows=1 loops=1)
+   Filter: (id = 777)
+   Rows Removed by Filter: 99999
+ Planning Time: 0.120 ms
+ Execution Time: 12.939 ms
+(5 rows)
+
+
+postgres=# CREATE INDEX idx_test_id ON test_72(id);					-- создать индекс.
+CREATE INDEX
+postgres=# EXPLAIN analyze SELECT * FROM test_72 WHERE id = 777;
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ Index Scan using idx_test_id on test_72  (cost=0.29..8.31 rows=1 width=31) (actual time=0.016..0.017 rows=1 loops=1)
+   Index Cond: (id = 777)
+ Planning Time: 0.216 ms
+ Execution Time: 0.030 ms
+(4 rows)

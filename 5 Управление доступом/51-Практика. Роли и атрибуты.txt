@@ -1,0 +1,140 @@
+================================== Unix socket:
+Это файл, через который идут локальные соединения:
+ilya@postgres:~$ ls -la /var/run/postgresql/					# Где находится socket PostgreSQL
+total 16
+drwxrwsr-x  4 postgres postgres 200 Dec 30 06:58 .
+drwxr-xr-x 24 root     root     820 Dec 30 10:42 ..
+srwxrwxrwx  1 postgres postgres   0 Dec 30 10:18 .s.PGSQL.5432			← Unix socket файл через, который обеспечивается двунаправленный обмен данными между процессами в операционной системе Unix.
+-rw-------  1 postgres postgres  68 Dec 30 10:18 .s.PGSQL.5432.lock
+srwxrwxrwx  1 postgres postgres   0 Dec 30 10:18 .s.PGSQL.5433
+-rw-------  1 postgres postgres  67 Dec 30 10:18 .s.PGSQL.5433.lock
+drwxr-s---  2 postgres postgres 100 Dec 30 10:42 14-dev.pg_stat_tmp
+-rw-r--r--  1 postgres postgres   4 Dec 30 06:58 14-dev.pid
+drwxr-s---  2 postgres postgres 160 Dec 30 10:42 14-main.pg_stat_tmp
+-rw-r--r--  1 postgres postgres   4 Dec 30 06:58 14-main.pid
+ilya@postgres:~$ test -w /var/run/postgresql/.s.PGSQL.5432 && echo "Может писать" || echo "Не может"
+Может писать
+
+------------------------------------- Аутентификация через socket (peer метод)
+postgres=# show hba_file;
+              hba_file
+-------------------------------------
+ /etc/postgresql/14/main/pg_hba.conf
+(1 row)
+
+ilya@postgres:~$ sudo -u postgres mcedit /etc/postgresql/14/main/pg_hba.conf	# файл аутентификации хостов (Host-Based Authentication) в PostgreSQL. Это главный файл конфигурации безопасности, который определяет кто, откуда и как может подключиться к PostgreSQL.
+# TYPE  DATABASE  USER  	ADDRESS  	METHOD
+local   all       all             		peer    				# ← Аутентификация peer/равноправный для socket. Локальные подключения через socket, -peer аутентификация. любой UID ОС → одноименный в БД.
+local   all	  postgres      		peer       				# postgres ОС → postgres БД
+local   all	  ilya		      		peer       				# postgres ОС → postgres БД
+local   all       +admin	        	peer       				# ОС пользователи из группы admin
+host    all       all   	127.0.0.1/32 	md5  					# ← Парольная для TCP/IP
+
+------------------------------------ Peer/однограговая аутентификация равных, это связь ОС ↔ PostgreSQL:
+sudo -u postgres psql									# Peer auth (автоматически по UID). В ОС я - пользователь 'postgres' подключаюсь к PostgreSQL, посредством утилиты. PostgreSQL понимает, что запускается процесс от пользователя ОС 'postgres', - для пользователя 'postgres' вход без пароля. 
+Право входа через UNIX socket 								— это возможность подключиться к PostgreSQL через локальный файл-сокет, используя аутентификацию peer, которая сопоставляет пользователя ОС (по UID процесса) с пользователем PostgreSQL. Это ЕДИНСТВЕННЫЙ случай, когда пользователь ОС и пользователь PostgreSQL связаны. Во всех остальных случаях (TCP/IP подключения) они полностью независимы.
+
+
+
+---------------------------------------------------- Users
+postgres=# SELECT usename, usesuper FROM pg_catalog.pg_user;				- представление каталога pg_user
+ usename  | usesuper
+----------+----------
+ postgres | t
+(1 row)
+postgres=# SELECT * FROM pg_catalog.pg_user;						- представление каталога pg_user
+ usename  | usesysid | usecreatedb | usesuper | userepl | usebypassrls |  passwd  | valuntil | useconfig
+----------+----------+-------------+----------+---------+--------------+----------+----------+-----------
+ postgres |       10 | t           | t        | t       | t            | ******** |          |
+(1 row)
+
+postgres=# \du										- 
+                                   List of roles
+ Role name |                         Attributes                         | Member of
+-----------+------------------------------------------------------------+-----------
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+
+
+postgres=# CREATE USER test;								- создать пользователя/роль
+CREATE ROLE		
+postgres=# \du										--
+                                   List of roles
+ Role name |                         Attributes                         | Member of
+-----------+------------------------------------------------------------+-----------
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ test      |                                                            | {}
+
+postgres=# \с -test									-- не описаны атрибуты пользователя
+invalid command \с
+Try \? for help.
+
+postgres=# SELECT rolname, rolcanlogin FROM pg_catalog.pg_roles;			-- какие Users права имеют. на вход
+          rolname          | rolcanlogin
+---------------------------+-------------
+ pg_database_owner         | f
+ pg_read_all_data          | f
+ pg_write_all_data         | f
+ pg_monitor                | f
+ pg_read_all_settings      | f
+ pg_read_all_stats         | f
+ pg_stat_scan_tables       | f
+ pg_read_server_files      | f
+ pg_write_server_files     | f
+ pg_execute_server_program | f
+ pg_signal_backend         | f
+ postgres                  | t								-- true
+ test                      | t								-- true
+(13 rows)
+
+почему не подключились? 								-- peer аутентификация через unix socket, а в unix нет пользователя тест. Postgres "изображает" из себя firewall.
+ilya@postgres:~$ sudo -u postgres cat /etc/postgresql/14/main/pg_hba.conf		--
+[sudo] password for ilya:
+# PostgreSQL Client Authentication Configuration File
+# ===================================================
+...
+# Database administrative login by Unix domain socket
+local   all             postgres                                peer
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+# "local" is for Unix domain socket connections only
+local   all             all                                     peer
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            scram-sha-256		-- нам сюда
+
+postgres=# ALTER USER test PASSWORD 'test';						-- зададим пароль, Терминал_1, без него не пустит
+ALTER ROLE
+
+ilya@postgres:~$ psql -U test -h 127.0.0.1 -d postgres -W				-- Терминал_2. указываем базу данных, потому как, default, одноимённая с именем пользователя БД не существует.
+Password:
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+postgres=> \conninfo									-- Терминал_2
+You are connected to database "postgres" as user "test" on host "127.0.0.1" at port "5432".
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+
+postgres=# \conninfo									-- Терминал_1
+You are connected to database "postgres" as user "postgres" via socket in "/var/run/postgresql" at port "5432".
+
+postgres=> SELECT * FROM test;								-- Терминал_2
+ERROR:  permission denied for table test
+
+postgres=# ALTER USER test PASSWORD 'test';						-- Терминал_1
+ALTER ROLE
+postgres=# SELECT * FROM test;
+  i
+-----
+  10
+  50
+ 770
+(3 rows)
+
+
+-- попробуем нового юзера создать из под test
+postgres=> CREATE USER test2 WITH PASSWORD 'test$123' NOLOGIN;				-- Терминал_2
+ERROR:  permission denied to create role
+
+-- попробуем нового юзера создать из под postgres					-- Терминал_1
+CREATE USER test2 WITH PASSWORD 'test$123' NOLOGIN;
+ALTER USER test2 PASSWORD 'test';
+sudo -u postgres psql -U test2 -h 127.0.0.1 -d postgres -W

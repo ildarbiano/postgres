@@ -1,0 +1,207 @@
+
+ilya@postgres:~$ sudo -u postgres psql
+[sudo] password for ilya:
+could not change directory to "/home/ilya": Permission denied
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# -------------------------------------------  joins
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS sklad;
+CREATE TABLE sklad(name TEXT, price DECIMAL(12,2));
+INSERT INTO sklad(name, price) VALUES
+('apple',100),
+('banana',100.50),
+('grape',55.44),
+('berry',33.3);
+
+CREATE TABLE sales(name TEXT, quant DECIMAL(12,3));
+INSERT INTO sales(name, quant) VALUES
+('banana',300),
+('banana',100),
+('grape',400.100),
+('berry',500),
+('banana',300);
+
+-- left
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name;
+NOTICE:  table "sales" does not exist, skipping
+DROP TABLE
+NOTICE:  table "sklad" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+INSERT 0 4
+CREATE TABLE
+INSERT 0 5
+  name  | price  |  quant
+--------+--------+---------
+ apple  | 100.00 |
+ banana | 100.50 | 300.000
+ banana | 100.50 | 100.000
+ banana | 100.50 | 300.000
+ berry  |  33.30 | 500.000
+ grape  |  55.44 | 400.100
+(6 rows)
+
+
+
+postgres=# ------------------------------------------- поиск товара, который не продаётся
+SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name
+  WHERE sales.quant IS NULL;					-- IS NULL, а не =NULL, потому как с NULL равенство не работает
+ name  | price  | quant
+-------+--------+-------
+ apple | 100.00 |
+(1 row)
+
+
+
+
+postgres=# ------------------------------------------- посмотреть план выполнения запроса
+EXPLAIN SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+INNER JOIN sales
+  ON sklad.name = sales.name;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Merge Join  (cost=149.08..240.30 rows=5724 width=64)
+   Merge Cond: (sklad.name = sales.name)
+   ->  Sort  (cost=74.54..77.21 rows=1070 width=48)
+         Sort Key: sklad.name
+         ->  Seq Scan on sklad  (cost=0.00..20.70 rows=1070 width=48)
+   ->  Sort  (cost=74.54..77.21 rows=1070 width=48)
+         Sort Key: sales.name
+         ->  Seq Scan on sales  (cost=0.00..20.70 rows=1070 width=48)
+(8 rows)
+
+postgres=# ------------------------------------------- посмотреть план выполнения запроса c выгрузкой в формате JSON
+EXPLAIN (FORMAT JSON) SELECT sklad.name, sklad.price, sales.quant
+FROM sklad
+LEFT JOIN sales
+  ON sklad.name = sales.name
+  WHERE sales.quant IS NULL;
+                    QUERY PLAN
+--------------------------------------------------
+ [                                               +
+   {                                             +
+     "Plan": {                                   +
+       "Node Type": "Merge Join",                +
+       "Parallel Aware": false,                  +
+       "Async Capable": false,                   +
+       "Join Type": "Left",                      +
+       "Startup Cost": 149.08,                   +
+       "Total Cost": 240.30,                     +
+       "Plan Rows": 29,                          +
+       "Plan Width": 64,                         +
+       "Inner Unique": false,                    +
+       "Merge Cond": "(sklad.name = sales.name)",+
+       "Filter": "(sales.quant IS NULL)",        +
+       "Plans": [                                +
+         {                                       +
+           "Node Type": "Sort",                  +
+           "Parent Relationship": "Outer",       +
+           "Parallel Aware": false,              +
+           "Async Capable": false,               +
+           "Startup Cost": 74.54,                +
+           "Total Cost": 77.21,                  +
+           "Plan Rows": 1070,                    +
+           "Plan Width": 48,                     +
+           "Sort Key": ["sklad.name"],           +
+           "Plans": [                            +
+             {                                   +
+               "Node Type": "Seq Scan",          +
+               "Parent Relationship": "Outer",   +
+               "Parallel Aware": false,          +
+               "Async Capable": false,           +
+               "Relation Name": "sklad",         +
+               "Alias": "sklad",                 +
+               "Startup Cost": 0.00,             +
+               "Total Cost": 20.70,              +
+               "Plan Rows": 1070,                +
+               "Plan Width": 48                  +
+             }                                   +
+:q
+
+
+-- ER диаграммы
+
+-- создадим 2 таблицы с первичным и внешним ключами
+
+DROP TABLE IF EXISTS sales;
+
+DROP TABLE IF EXISTS sklad;
+
+CREATE TABLE sklad(
+
+    id SERIAL PRIMARY KEY, 
+
+    name TEXT, 
+
+    price DECIMAL(12,2)
+
+);
+
+INSERT INTO sklad(name, price) VALUES
+
+('apple',100),
+
+('banana',100.50),
+
+('grape',55.44),
+
+('berry',33.3);
+   
+
+CREATE TABLE sales(
+
+    id SERIAL, 
+
+    fk_sklad INT references sklad(id), 
+
+    quant DECIMAL(12,3)
+
+);
+
+INSERT INTO sales(fk_sklad, quant) VALUES
+
+(2,300),
+
+(2,100),
+
+(3,400.100),
+
+(4,500),
+
+(2,300);
+  
+
+SELECT sklad.name, sklad.price, sales.quant
+
+FROM sklad
+
+LEFT JOIN sales
+
+  ON sklad.id = sales.fk_sklad;
+  
+
+UPDATE sklad SET name = 'apple2' WHERE name = 'apple';
+
+SELECT sklad.name, sklad.price, sales.quant
+
+FROM sklad
+
+LEFT JOIN sales
+
+  ON sklad.id = sales.fk_sklad;
+ 
+
+-- кроме экономии места - ускоряем всю работу и делаем сущности развязанными
+
+  
+
+-- построим ER диаграмму в DBeaver

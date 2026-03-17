@@ -1,0 +1,27 @@
+-- Создать таблицу
+
+CREATE TABLE test5(i int);
+-- Посмотреть путь к ней
+
+SELECT pg_relation_filepath('test5');
+-- Найти её на диске
+
+cd /var/lib/postgresql/14/main/base
+
+ls -l
+
+cd 13797
+
+ls -l
+
+ls -l | grep
+-- Наполнить данными
+
+INSERT INTO test5 VALUES (1);
+
+ls -l | grep
+-- Посмотреть как она увеличивается в размере
+
+INSERT INTO test5 VALUES (2);
+
+ls -l | grep

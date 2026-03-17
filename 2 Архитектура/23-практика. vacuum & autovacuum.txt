@@ -1,0 +1,73 @@
+VACUUM - это операция обслуживания БД, которая:
+	Освобождает место, занимаемое "мертвыми" кортежами
+	Обновляет статистику для планировщика запросов
+	Замораживает старые идентификаторы транзакций
+	Выполняет другие операции обслуживания
+	VACUUM требует эксклюзивного доступа к таблице и выполняет изменения в системных каталогах, что несовместимо с обычными транзакциями.
+\dt
+------------------- 1 window
+begin transaction isolation level repeatable read;
+postgres=*# select * from test;
+UPDATE test set i = 40 WHERE i = 20;
+------------------------------------
+postgres=*# UPDATE test set i = 770 WHERE i = 40;
+UPDATE 1
+postgres=*# commit;
+COMMIT
+
+
+------------------- 2 window
+begin transaction isolation level repeatable read;
+vacuum full verbose test;				-fuul начнётся, но завершится только когда транзакция будет прервана или завершена. требует высокого разрешения на промышленной среде.
+INFO:  vacuuming "public.test"
+INFO:  "test": found 2 removable, 4 nonremovable row versions in 1 pages
+DETAIL:  1 dead row versions cannot be removed yet.	-строка ещё не освободилась
+CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s.
+VACUUM
+--------------------------------------------
+vacuum verbose test;					-только атомарно и при завершённой транзакции в окне1.
+INFO:  vacuuming "public.test"
+INFO:  table "test": removed 1 dead item identifiers in 1 pages
+INFO:  table "test": found 2 removable, 3 nonremovable row versions in 1 out of 1 pages
+DETAIL:  0 dead row versions cannot be removed yet, oldest xmin: 745
+Skipped 0 pages due to buffer pins, 0 frozen pages.
+CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s.
+VACUUM
+
+
+
+================== AUTOVACUUM
+SELECT name, setting, context, short_desc FROM pg_settings WHERE category like '%Autovacuum%';
+
+
+WITH max_age AS ( 
+    SELECT 2000000000 as max_old_xid
+        , setting AS autovacuum_freeze_max_age 
+        FROM pg_catalog.pg_settings 
+        WHERE name = 'autovacuum_freeze_max_age' )
+, per_database_stats AS ( 
+    SELECT datname
+        , m.max_old_xid::int
+        , m.autovacuum_freeze_max_age::int
+        , age(d.datfrozenxid) AS oldest_current_xid 
+    FROM pg_catalog.pg_database d 
+    JOIN max_age m ON (true) 
+    WHERE d.datallowconn ) 
+SELECT max(oldest_current_xid) AS oldest_current_xid
+    , max(ROUND(100*(oldest_current_xid/max_old_xid::float))) AS percent_towards_wraparound
+    , max(ROUND(100*(oldest_current_xid/autovacuum_freeze_max_age::float))) AS percent_towards_emergency_autovac 
+FROM per_database_stats;					- запрашиваем статистику
+								- первый показатель показывает приближение проблемы
+								- второй показывает когда запустится автоматический автофриз
+ oldest_current_xid | percent_towards_wraparound | percent_towards_emergency_autovac
+--------------------+----------------------------+-----------------------------------
+                 19 |                          0 |                                 0
+(1 row)
+
+
+
+SELECT c.oid::regclass as table_name,
+       greatest(age(c.relfrozenxid),age(t.relfrozenxid)) as age
+FROM pg_class c
+LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
+WHERE c.relkind IN ('r', 'm');					- посмотрим маскимальный возраст для наших таблиц

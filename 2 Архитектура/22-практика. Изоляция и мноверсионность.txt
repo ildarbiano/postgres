@@ -1,0 +1,131 @@
+SELECT txid_current();						--текущий номер транзакции.
+\echo :AUTOCOMMIT						--вывести состояние параметра.
+\set AUTOCOMMIT OFF						--изменить состояние параметра. Отключить создания новых транзаций.
+\set AUTOCOMMIT ON						--изменить состояние параметра. Включить создания новых транзаций, автокоммит.
+
+postgres=# begin;						--начать транзакцию;
+	CREATE TABLE test(i int);
+	INSERT INTO test VALUES (10),(20),(30);
+postgres=*# commit;						--фиксация изменений БД;
+COMMIT								--зафиксированную транзакцию отменить не возможно.
+postgres=#  show transaction isolation level;			--покажет текущий уровень изоляции.
+
+------------------------ BEGIN transaction isolation level read committed;
+SELECT txid_current();
+
+-- если у нас будет ошибка, то транзакция прекратиться, больше никакие команды не выполнятся и будет ждать отмены транзакции
+SELECT tx();
+SELECT txid_current();
+ROLLBACK;							--ОТМЕНА действия/транзакции.
+
+
+
+SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'test';						--покажет: сколько "живых", "мёртвых" записей в таблице статистики.
+UPDATE test set i = 40 WHERE i = 30;				--обновим значения в таблице.
+postgres=*# commit;						--зафиксированную транзакцию отменить не возможно.
+COMMIT
+-------------------------- посмотрим что теперь:
+ relname | n_live_tup | n_dead_tup | ratio% | last_autovacuum
+---------+------------+------------+--------+-----------------
+ test    |          3 |          1 |     25 |
+(1 row)
+dead_tup							--"мёртвая запись", которые чистятся vacuum.
+
+
+postgres=*# SELECT xmin,xmax,cmin,cmax,ctid FROM test;
+ xmin | xmax | cmin | cmax | ctid
+------+------+------+------+-------
+  737 |    0 |    1 |    1 | (0,1)
+  737 |    0 |    1 |    1 | (0,2)
+  738 |    0 |    0 |    0 | (0,4)
+(3 rows)
+
+
+--------------------- EXTENSION расширяет базовый функционал -----------------------------------------------------
+CREATE EXTENSION pageinspect;					--доступ к "мёртвым записям" https://postgrespro.ru/docs/postgresql/14/pageinspect 
+postgres=# \dx+				                	--Список Objects in extension "pageinspect". Object description
+SELECT lp as tuple, t_xmin, t_xmax, t_field3 as t_cid, t_ctid FROM heap_page_items(get_raw_page('test',0));
+								--собрать "сырые" данные из таблицы.
+ tuple | t_xmin | t_xmax | t_cid | t_ctid
+-------+--------+--------+-------+--------
+     1 |    737 |      0 |     1 | (0,1)
+     2 |    737 |      0 |     1 | (0,2)
+     3 |    737 |    738 |     0 | (0,4)
+     4 |    738 |      0 |     0 | (0,4)
+(4 rows)
+ctid 								—-это уникальный идентификатор версии строки, состоящий из: (номер_страницы, номер_строки_на_странице). Для: Внутренних нужд PostgreSQL (MVCC). Очень быстрые точечные операции. Удаление дубликатов. физическое местоположение строки в таблице.
+xmin								--ID транзакции, создавшей строку
+xmax								--ID транзакции, удалившей строку
+tableoid							--OID таблицы
+
+SELECT * FROM heap_page_items(get_raw_page('test',0)) \gx	--подробно покажет то, что собержат в себе сырые данные.
+
+SELECT '(0,'||lp||')' AS ctid,
+       CASE lp_flags
+         WHEN 0 THEN 'unused'
+         WHEN 1 THEN 'normal'
+         WHEN 2 THEN 'redirect to '||lp_off
+         WHEN 3 THEN 'dead'
+       END AS state,
+       t_xmin as xmin,
+       t_xmax as xmax,
+       (t_infomask & 256) > 0  AS xmin_commited,
+       (t_infomask & 512) > 0  AS xmin_aborted,
+       (t_infomask & 1024) > 0 AS xmax_commited,
+       (t_infomask & 2048) > 0 AS xmax_aborted,
+       t_ctid
+FROM heap_page_items(get_raw_page('test',0)) \gx		--подробно покажет то, что собержат в себе сырые данные.
+COMMIT;								--зафиксированную транзакцию отменить не возможно.
+
+------------------------- посмотрим что теперь
+SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'test';
+
+------------------------- так данные лежат на диске:
+SELECT '(0,'||lp||')' AS ctid,
+       t_xmin as xmin,
+       t_xmax as xmax,
+       t_ctid
+FROM heap_page_items(get_raw_page('test',0));
+
+SELECT lp as tuple, t_xmin, t_xmax, t_field3 as t_cid, t_ctid FROM heap_page_items(get_raw_page('test',0));
+UPDATE test set i = 50 WHERE i = 40;
+ ctid  | xmin | xmax | t_ctid
+-------+------+------+--------
+ (0,1) |  737 |    0 | (0,1)
+ (0,2) |  737 |    0 | (0,2)
+ (0,3) |  737 |  738 | (0,4)
+ (0,4) |  738 |  741 | (0,5)					--5 запись ссылается сама на себя, - это самое актуальное состояние строки.
+ (0,5) |  741 |    0 | (0,5)
+(5 rows)
+SELECT i, xmin,xmax,cmin,cmax,ctid FROM test;			--просмотр со значением таблицы "i".
+
+
+============================ TRANSACTION ISOLATION LEVEL READ COMMITTED;
+---------------------------- 1 console
+BEGIN;
+SELECT * FROM test;
+
+---------------------------- 2 consoleapp=# 
+---------------------------- sudo -u postgres psql
+\c iso
+BEGIN;
+UPDATE test set i = 555 WHERE i = 1;
+COMMIT;
+
+---------------------------- 1 console
+SELECT * FROM test; -- different values
+COMMIT;
+
+
+============================= TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+-- 1 console
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM test;
+
+-- 2 console
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test VALUES (777);
+COMMIT;
+
+-- 1 console
+SELECT * FROM test;

@@ -1,0 +1,227 @@
+================================ 2. Что происходит в вашем примере:
+sql
+WITH test AS (
+  SELECT 1      -- первый запрос
+    UNION       -- объединяем с
+    SELECT 2    -- вторым запросом
+)
+SELECT * FROM test;
+Разбор по шагам:
+Шаг 1: SELECT 1
+→ Возвращает таблицу с одной строкой и одним столбцом:
+
+text
+?column?
+---------
+       1
+Шаг 2: SELECT 2
+→ Возвращает таблицу с одной строкой и одним столбцом:
+
+text
+?column?
+---------
+       2
+Шаг 3: UNION
+→ Объединяет результаты ДВУХ запросов:
+
+text
+?column?
+---------
+       1
+       2
+Шаг 4: WITH test AS (...)
+→ Сохраняет результат как временную таблицу test
+
+Шаг 5: SELECT * FROM test
+→ Выбирает всё из временной таблицы
+
+===================================== 3. Что такое UNION?
+UNION — оператор объединения результатов ДВУХ или более SELECT-запросов.
+
+Ключевые особенности UNION:
+Оба SELECT должны возвращать одинаковое количество столбцов
+
+Типы данных столбцов должны быть совместимы
+
+По умолчанию удаляет дубликаты
+
+UNION ALL — не удаляет дубликаты, быстрее
+
+4. Правильное понимание вашего запроса:
+Ваш запрос это CTE с составным запросом внутри:
+
+text
+WITH test AS (
+    [ЗАПРОС_1] UNION [ЗАПРОС_2]  -- два SELECT объединены UNION
+)
+SELECT ... FROM test;
+5. Более понятные примеры:
+Пример 1: UNION двух запросов
+sql
+WITH numbers AS (
+  SELECT 1 as num, 'один' as name
+    UNION
+  SELECT 2, 'два'
+    UNION
+  SELECT 3, 'три'
+)
+SELECT * FROM numbers;
+Результат:
+
+text
+ num | name
+-----+-------
+   1 | один
+   2 | два
+   3 | три
+Пример 2: UNION из разных таблиц
+sql
+WITH all_users AS (
+  -- Пользователи из старой системы
+  SELECT id, name, 'legacy' as source FROM old_users
+    UNION ALL
+  -- Пользователи из новой системы
+  SELECT user_id, full_name, 'new' FROM new_users
+)
+SELECT * FROM all_users WHERE name LIKE 'Иван%';
+Пример 3: Без CTE (тоже работает)
+sql
+-- Просто UNION без CTE
+SELECT 1 
+  UNION 
+SELECT 2;
+
+-- Результат такой же:
+-- ?column?
+-- ---------
+--       1
+--       2
+================================= 6. Разница между UNION и несколькими строками в одном SELECT:
+sql
+-- Вариант 1: UNION (два запроса)
+SELECT 1 UNION SELECT 2;
+
+-- Вариант 2: Один запрос с несколькими строками
+VALUES (1), (2);
+
+-- Вариант 3: Один запрос
+SELECT * FROM (VALUES (1), (2)) AS t(num);
+Все три дают одинаковый результат!
+
+=================================== 7. Когда действительно нужен UNION в CTE:
+Случай 1: Объединение данных из разных источников
+sql
+WITH monthly_sales AS (
+  -- Продажи из CRM
+  SELECT sale_date, amount, 'crm' as source FROM crm_sales
+    UNION ALL
+  -- Продажи из сайта
+  SELECT order_date, total, 'website' FROM website_orders
+    UNION ALL
+  -- Продажи из мобильного приложения
+  SELECT created_at, sum, 'mobile' FROM app_purchases
+)
+SELECT 
+  DATE_TRUNC('month', sale_date) as month,
+  source,
+  SUM(amount) as total
+FROM monthly_sales
+GROUP BY month, source;
+Случай 2: Разделение логики сложного запроса
+sql
+WITH 
+-- Активные пользователи
+active_users AS (
+  SELECT user_id FROM users WHERE last_login > NOW() - INTERVAL '30 days'
+),
+-- Платящие пользователи  
+paying_users AS (
+  SELECT user_id FROM payments WHERE status = 'completed'
+),
+-- Объединенная статистика
+user_stats AS (
+  SELECT user_id, 'active' as category FROM active_users
+    UNION
+  SELECT user_id, 'paying' FROM paying_users
+    UNION
+  SELECT user_id, 'both' FROM active_users 
+  INTERSECT 
+  SELECT user_id FROM paying_users
+)
+SELECT category, COUNT(*) FROM user_stats GROUP BY category;
+8. Ваш запрос без CTE:
+sql
+-- То же самое, но короче
+SELECT 1 
+  UNION 
+SELECT 2;
+
+-- Или еще короче
+VALUES (1), (2);
+9. Что если убрать UNION?
+sql
+WITH test AS (
+  SELECT 1  -- только один SELECT
+)
+SELECT * FROM test;
+Результат:
+
+text
+?column?
+---------
+       1
+10. CTE с подзапросом (как вы ожидали):
+sql
+-- Классический CTE с подзапросом FROM
+WITH test AS (
+  SELECT column1, column2 
+  FROM some_table 
+  WHERE some_condition
+)
+SELECT * FROM test WHERE column1 > 100;
+
+-- Или с JOIN
+WITH users_cte AS (
+  SELECT id, name FROM users WHERE active = true
+),
+orders_cte AS (
+  SELECT user_id, SUM(amount) as total 
+  FROM orders 
+  GROUP BY user_id
+)
+SELECT u.name, o.total
+FROM users_cte u
+JOIN orders_cte o ON u.id = o.user_id;
+11. Почему ваш запрос работает?
+Потому что:
+
+В PostgreSQL SELECT 1 — это корректный запрос (возвращает константу)
+
+UNION объединяет результаты двух запросов
+
+CTE может содержать любой корректный SQL, включая UNION
+
+Имя столбца в результате — ?column? (автоматическое)
+
+=========================================  Итог:
+Ваш запрос:
+
+sql
+WITH test AS (
+  SELECT 1
+    UNION
+    SELECT 2
+)
+SELECT * FROM test;
+Это CTE, который:
+
+Создает временную таблицу test
+
+Внутри CTE — два запроса, объединенных UNION
+
+UNION создает таблицу из двух строк: 1 и 2
+
+Основной SELECT просто выбирает из этой временной таблицы
+
+Union = "объединение результатов нескольких запросов"
+CTE = "временное именование результата запроса" 🔄➕

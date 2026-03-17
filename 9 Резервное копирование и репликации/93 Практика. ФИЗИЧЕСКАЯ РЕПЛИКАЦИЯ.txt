@@ -1,0 +1,41 @@
+-- зайдем в консоль под пользователем postgres
+sudo su postgres
+ 
+
+-- Посмотрим текущее состояние
+pg_lsclusters
+ 
+
+-- если остался 2 кластер остановим и удалим его
+pg_ctlcluster 14 main2 stop
+pg_dropcluster 14 main2
+pg_lsclusters
+ 
+
+-- Создадим 2 кластер
+pg_createcluster -d /var/lib/postgresql/14/main2 14 main2
+ 
+
+-- Удалим оттуда файлы
+rm -rf /var/lib/postgresql/14/main2
+ 
+
+-- Сделаем бэкап нашей БД. Ключ -R создаст заготовку управляющего файла recovery.conf
+pg_basebackup -p 5432 -R -D /var/lib/postgresql/14/main2
+ 
+
+-- Стартуем кластер
+pg_ctlcluster 14 main2 start
+ 
+
+-- Смотрим как стартовал
+pg_lsclusters									-- реплицируемый кластер будет помечен online.recovery
+  
+
+--  в Базе данных master-cluster создадим таблицу и добавим 2 записи
+psql -c "CREATE TABLE testrepl(i int);"
+psql -c "INSERT INTO testrepl VALUES (1),(2);"
+  
+
+-- в Базе данных replica\slave-cluster (online.recovery) прочитаем данные из этой таблицы
+psql -p 5433 -c "SELECT * FROM testrepl;"

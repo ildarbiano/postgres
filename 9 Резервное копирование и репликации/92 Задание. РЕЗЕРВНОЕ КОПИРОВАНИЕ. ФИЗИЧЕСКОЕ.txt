@@ -1,0 +1,13 @@
+-- Создать каталог в папке home и выдать на него права всем
+
+sudo mkdir /home/2 && sudo chmod 777 /home/2
+  
+
+-- Использовать утилиту pg_basebackup, чтобы создать бэкап этой таблицы
+
+sudo -u postgres pg_basebackup -p 5432 -D /home/2
+  
+
+-- Убедиться, что данные скопированы
+
+ls -l /home/2

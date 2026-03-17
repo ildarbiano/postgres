@@ -1,0 +1,65 @@
+-- joins
+
+CREATE TABLE sklad(name TEXT, price DECIMAL(12,2));
+
+INSERT INTO sklad(name, price) VALUES
+
+('apple',100),
+
+('banana',100.50),
+
+('grape',55.44),
+
+('berry',33.3);
+  
+
+CREATE TABLE sales(name TEXT, quant DECIMAL(12,3));
+
+INSERT INTO sales(name, quant) VALUES
+
+('banana',300),
+
+('banana',100),
+
+('grape',400.100),
+
+('berry',500),
+
+('banana',300);
+  
+
+-- inner joins
+
+SELECT sklad.name, sklad.price, sales.quant
+
+FROM sklad
+
+INNER JOIN sales
+
+  ON sklad.name = sales.name;
+  
+
+-- left
+
+SELECT sklad.name, sklad.price, sales.quant
+
+FROM sklad
+
+LEFT JOIN sales
+
+  ON sklad.name = sales.name;
+  
+
+-- *
+
+SELECT sklad.name, sklad.price, sales.quant
+
+FROM sklad
+
+LEFT JOIN sales
+
+  ON sklad.name = sales.name
+
+  WHERE sales.quant IS NULL;
+Изучено
+Задание с решением. Джойны

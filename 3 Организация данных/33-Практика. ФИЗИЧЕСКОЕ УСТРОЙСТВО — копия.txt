@@ -1,0 +1,256 @@
+========================================= Как посмотреть конфигурационные файлы?
+ilya@postgres:~$ sudo -u postgres psql
+[sudo] password for ilya:
+could not change directory to "/home/ilya": Permission denied
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+
+postgres=# show hba_file;
+              hba_file
+-------------------------------------
+ /etc/postgresql/14/main/pg_hba.conf					-- файл аутентификации хостов (Host-Based Authentication) в PostgreSQL. Это главный файл конфигурации безопасности, который определяет кто, откуда и как может подключиться к PostgreSQL. Содержит правила доступа вида: "клиенты с такого-то IP-адреса, подключающиеся к таким-то базам, под такими-то пользователями, могут использовать такой-то метод аутентификации". Это брандмауэр PostgreSQL. Он контролирует все подключения к серверу БД. Без правильной настройки этого файла невозможно ни одно подключение (кроме локального через Unix-сокет).
+(1 row)
+
+postgres=# show config_file;
+               config_file
+-----------------------------------------
+ /etc/postgresql/14/main/postgresql.conf				-- .....
+(1 row)	
+								
+postgres=# show data_directory;
+       data_directory
+-----------------------------
+ /var/lib/postgresql/14/main 						-- директория с данными
+(1 row)
+
+postgres=# \! mcedit /etc/postgresql/14/main/postgresql.conf		-- если данные мы частично или полностью переносим из  /var/lib/postgresql/14/main в лругие места, то необходимо об этом сказать.
+ 
+postgres-# \! ls -la /var/lib/postgresql/14/main			-- данные cluster main
+total 92
+drwx------ 19 postgres postgres 4096 Dec 28 19:38 .
+drwxr-xr-x  3 postgres postgres 4096 Dec 15 11:15 ..
+-rw-------  1 postgres postgres    3 Dec 15 09:00 PG_VERSION
+drwx------  8 postgres postgres 4096 Dec 27 17:01 base			-- каталог с данными
+drwx------  2 postgres postgres 4096 Dec 28 19:39 global		-- каталог с глобальными представлениями
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_commit_ts
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_dynshmem
+drwx------  4 postgres postgres 4096 Dec 28 19:43 pg_logical
+drwx------  4 postgres postgres 4096 Dec 15 09:00 pg_multixact		-- каталог дл мульти транзакций
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_notify
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_replslot
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_serial
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_snapshots
+drwx------  2 postgres postgres 4096 Dec 28 19:38 pg_stat
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_stat_tmp
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_subtrans
+drwx------  2 postgres postgres 4096 Dec 27 16:28 pg_tblspc		-- кастомные, List of tablespaces
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_twophase
+drwx------  3 postgres postgres 4096 Dec 15 09:00 pg_wal
+drwx------  2 postgres postgres 4096 Dec 15 09:00 pg_xact
+-rw-------  1 postgres postgres  111 Dec 24 08:14 postgresql.auto.conf	-- содержит настойки, которые перезаписывают основные настройки
+-rw-------  1 postgres postgres  130 Dec 28 19:38 postmaster.opts
+-rw-------  1 postgres postgres  107 Dec 28 19:38 postmaster.pid
+postgres-# \! ls -la /var/lib/postgresql/14/main/pg_tblspc		-- кастомные, List of tablespaces
+total 8			
+drwx------  2 postgres postgres 4096 Dec 27 16:28 .
+drwx------ 19 postgres postgres 4096 Dec 28 19:38 ..
+lrwxrwxrwx  1 postgres postgres   32 Dec 27 16:28 16636 -> /var/lib/postgresql/temp_tblspce
+ 
+
+postgres=# CREATE TABLE test5(i int);					--
+CREATE TABLE
+postgres=# SELECT pg_relation_filepath('test5');			-- посмотреть, где лежит таблица
+ pg_relation_filepath
+----------------------
+ base/13759/16645							-- путь физический, /var/lib/postgresql/14/main/base/13759/16645
+(1 row)
+postgres=# \! ls -l /var/lib/postgresql/14/main/base;			-- посмотрим на файловую систему
+total 32
+drwx------ 2 postgres postgres  4096 Dec 28 19:38 1			-- template1
+drwx------ 2 postgres postgres  4096 Dec 15 09:00 13758			-- template0
+drwx------ 2 postgres postgres 12288 Dec 28 20:28 13759			-- здесь DB postgres
+drwx------ 2 postgres postgres  4096 Dec 28 19:39 16519
+drwx------ 2 postgres postgres  4096 Dec 27 17:05 16637			-- Директория БД "app" В tablespace pg_default (OID=0)
+drwx------ 2 postgres postgres  4096 Dec 15 13:48 pgsql_tmp
+postgres-# postgres=# \! ls -la /var/lib/postgresql/14/main/base/13759 | grep 16645;
+-rw------- 1 postgres postgres      0 Dec 28 20:28 16645		-- TABLE test5(i int); in DB postgres
+postgres=# \! ls  /var/lib/postgresql/14/main/base/13759/16645;		-- TABLE test5(i int); in DB postgres
+-rw------- 1 postgres postgres 0 Dec 28 20:28 /var/lib/postgresql/14/main/base/13759/16645
+
+
+postgres=# INSERT INTO test5 VALUES (1);				-- добавили строчку 1 в страницу таблицы
+INSERT 0 1
+postgres=# postgres=# \! ls -la /var/lib/postgresql/14/main/base/13759 | grep 16645;
+-rw------- 1 postgres postgres   8192 Dec 28 20:47 16645		-- размер страницы 8КБ
+postgres=# INSERT INTO test5 VALUES (2);				-- добавили строчку 2 в страницу таблицы
+INSERT 0 1
+postgres=# \! ls -la /var/lib/postgresql/14/main/base/13759 | grep 16645;
+-rw------- 1 postgres postgres   8192 Dec 28 20:48 16645		-- размер страницы не изменился, 8КБ, до заполнения её
+
+
+======================================== Кластер PostgreSQL в контексте Filesystem Hierarchy Standard (FHS): 
+— это единая инсталляция PostgreSQL со своими данными, конфигурацией и логами. Это НЕ то же самое, что кластеры в других СУБД (не репликация).
+Cluster =	1 экземпляр сервера PostgreSQL + 
+		все его базы данных + 
+		конфигурация.
+Аналогия:
+Cluster 	= "Один сервер PostgreSQL"
+База данных 	= "База внутри сервера"
+Tablespace 	= "Директория для хранения данных"
+Кластеры изолированы:
+		-Нельзя сделать JOIN между БД из разных кластеров
+		-Нет общей памяти или процессов
+		-Можно запустить/остановить независимо
+/var/lib/postgresql/
+├── 14/                   	# Версия PostgreSQL
+│   ├── main/             	# Имя кластера (по умолчанию "main")
+│   │   ├── base/         	# Основные данные (tablespace pg_default)
+│   │   ├── global/       	# Глобальные данные (pg_global). OID = 1663
+|   |	├── pg_tblspc/          # Пользовательские tablespace
+│   |	└── 16636/              # Tablespace 'ts' (OID 16636), где находятся файлы таблиц
+│   | 	   └── PG_14_202107181/  	# Версия PostgreSQL
+│   |    	    └── 16637/        		# БД "app" (OID 16637) в ts. Директория БД 'app' В tablespace 'ts' (OID=16636)
+│   |    	        └── 16641     			# Таблица "test2" (OID 16641)
+│   │   ├── pg_wal/       	| WAL (Write-Ahead Log)
+│   │   ├── pg_xact/      	| (транзакционные логи)
+│   │   ├── pg_stat/      	| Статистика
+│   │   ├── postmaster.opts  	# Параметры запуска
+│   │   └── PG_VERSION    	# Версия данных
+│   └── dev/ 		  	# Другой кластер (если создан)
+│
+/etc/postgresql/
+├── 14/				# Версия PostgreSQL
+│   ├── main/             	# Конфигурация кластера "main"
+│   │   ├── postgresql.conf
+│   │   ├── pg_hba.conf
+│   │   └── pg_ident.conf
+│   └── dev/		  	# Конфигурация другого кластера
+│
+/var/log/postgresql/
+├── postgresql-14-main.log  	# Логи кластера "main"
+└── postgresql-14-dev.log 	# Логи другого кластера
+
+========================================== БД app имеет объекты в ДВУХ tablespace одновременно!
+/var/lib/postgresql/14/main/
+├── base/16637/     				← Директория БД 'app' В tablespace 'pg_default' (OID=0)
+└── pg_tblspc/16636/PG_14_202107181/16637/  	← Директория БД 'app' В tablespace 'ts' (OID=16636)
+
+Так как БД 'app' использует 'ts' как default:
+CREATE TABLE table1 (id int);  				-- Таблица создастся в БД 'app' и в tablespace 'ts'
+CREATE TABLE table2 (id int) TABLESPACE pg_default;  	-- Таблица создастся в БД 'app' и в tablespace 'pg_default'
+
+БД 		= Компания, имеет здание
+Tablespace 	= Этажи в здании
+Объекты БД 	= Отделы компании (бухгалтерия, IT, HR)
+
+Компания может:
+Арендовать 3-й этаж (ts) как основной (default tablespace)
+Но иметь бухгалтерию на 1-м этаже (pg_default)
+И IT-отдел на 3-м этаже (ts)
+Компания не "находится" на 3-м этаже — но использует 3-й этаж как основной.
+===========================================================================
+------------------------------------------- Местоположение:
+/usr/lib/postgresql/{версия_Postgres}/bin/            				# Исполняемые файлы Postgres
+/usr/lib/postgresql/{версия_Postgres}/lib/            				# Библиотеки Postgres
+/etc/postgresql/{версия_Postgres}/{имя_кластера}/				# Конфигурационные файлы Cluster
+/var/log/postgresql/postgresql-{версия_Postgres}-{кластер}.log			# Лог-файлы Cluster
+/var/lib/postgresql/{версия_Postgres}/{имя_кластера}/				# Основная директория данных main Cluster
+ilya@postgres:~$ sudo -u postgres ls -la /var/lib/postgresql/14/main/base
+total 40
+drwx------  8 postgres postgres  4096 Dec 27 17:01 .
+drwx------ 19 postgres postgres  4096 Dec 29 07:01 ..
+drwx------  2 postgres postgres  4096 Dec 29 07:01 1			-- OID template1
+drwx------  2 postgres postgres  4096 Dec 15 09:00 13758		-- OID template0
+drwx------  2 postgres postgres 12288 Dec 29 07:02 13759		-- OID postgres 	database
+drwx------  2 postgres postgres  4096 Dec 29 07:01 16519		-- OID buffer_temp	database
+drwx------  2 postgres postgres  4096 Dec 27 17:05 16637		-- OID app		database
+drwx------  2 postgres postgres  4096 Dec 15 13:48 pgsql_tmp
+postgres=# \l
+                               List of databases
+    Name     |  Owner   | Encoding | Collate |  Ctype  |   Access privileges
+-------------+----------+----------+---------+---------+-----------------------
+ app         | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ buffer_temp | postgres | UTF8     | C.UTF-8 | C.UTF-8 |
+ postgres    | postgres | UTF8     | C.UTF-8 | C.UTF-8 |				
+ template0   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+ template1   | postgres | UTF8     | C.UTF-8 | C.UTF-8 | =c/postgres          +
+             |          |          |         |         | postgres=CTc/postgres
+
+ilya@postgres:~$ sudo -u postgres ls -la /var/lib/postgresql/14/main/base	
+total 40
+drwx------  8 postgres postgres  4096 Dec 27 17:01 .
+drwx------ 19 postgres postgres  4096 Dec 29 07:01 ..
+drwx------  2 postgres postgres  4096 Dec 29 07:01 1			-- template1, 	tablespace 'pg_default'
+drwx------  2 postgres postgres  4096 Dec 15 09:00 13758		-- template0, 	tablespace 'pg_default'
+drwx------  2 postgres postgres 12288 Dec 29 07:02 13759		-- postgres, 	tablespace 'pg_default'
+drwx------  2 postgres postgres  4096 Dec 29 07:01 16519		-- buffer_temp, tablespace 'pg_default'
+drwx------  2 postgres postgres  4096 Dec 27 17:05 16637		-- app, 	tablespace 'ts'
+drwx------  2 postgres postgres  4096 Dec 15 13:48 pgsql_tmp
+app=# SELECT
+    d.oid,
+    d.datname,
+    CASE
+        WHEN d.dattablespace = 0 THEN 'pg_default'
+        ELSE (SELECT spcname FROM pg_tablespace WHERE oid = d.dattablespace)
+    END as default_tablespace
+FROM pg_database d
+WHERE d.oid IN (1, 13758, 13759, 16519, 16637)
+ORDER BY d.oid;
+  oid  |   datname   | default_tablespace
+-------+-------------+--------------------
+     1 | template1   | pg_default
+ 13758 | template0   | pg_default
+ 13759 | postgres    | pg_default
+ 16519 | buffer_temp | pg_default
+ 16637 | app         | ts
+
+
+
+-------------------------------------------- Управление Cluster:
+ilya@postgres:~$ pg_lsclusters							# Показать все кластеры
+Ver Cluster Port Status Owner    Data directory              Log file
+14  dev     5433 down   postgres /var/lib/postgresql/14/dev  /var/log/postgresql/postgresql-14-dev.log
+14  main    5432 online postgres /var/lib/postgresql/14/main /var/log/postgresql/postgresql-14-main.log
+
+sudo pg_createcluster 14 dev --port 5433					# Создать новый кластер "test" для версии 14
+sudo pg_ctlcluster 14 main status
+sudo pg_ctlcluster 14 main start						# Старт конкретного кластера
+sudo pg_ctlcluster 14 main stop							# Стоп конкретного кластера
+sudo pg_ctlcluster 14 main restart
+---------------------------------
+sudo systemctl status postgresql@14-main					# через systemd (более современно)
+sudo systemctl start postgresql@14-main
+
+-------------------------------------------- Структура внутри директории данных кластера:
+bash
+/var/lib/postgresql/14/main/
+├── base/             # Базы данных (tablespace pg_default)
+│   ├── 1/            # OID template1,		tablespace 'pg_default'
+│   ├── 13577/        # OID template0,		tablespace 'pg_default'
+│   ├── 13578/        # OID postgres,		tablespace 'pg_default'
+│   └── 16637/        # OID вашей базы 'app',	tablespace 'ts'
+├── global/           # Глобальные таблицы (общие для всех БД)
+│   ├── pg_control    # Контрольный файл кластера
+│   └── ...
+├── pg_tblspc/        # Табличные пространства
+│   └── 16636/        # OID tablespace 'ts'
+│       └── PG_14_202107181/
+│           └── 16637/ # OID базы 'app' внутри 'ts'
+├── pg_wal/           | Write-Ahead Logs (транзакционные логи)
+├── pg_xact/          | (устаревшее название, теперь pg_wal)
+├── pg_stat/          # Статистика
+├── pg_stat_tmp/      # Временная статистика
+├── pg_logical/       # Логическая репликация
+├── pg_replslot/      # Слоты репликации
+├── pg_commit_ts/     # Временные метки коммитов
+├── pg_dynshmem/      # Динамическая разделяемая память
+├── pg_notify/        # Уведомления LISTEN/NOTIFY
+├── pg_serial/        # Сериализуемые транзакции
+├── pg_snapshots/     # Снимки транзакций
+├── pg_subtrans/      # Подтранзакции
+├── pg_twophase/      # 2-фазные коммиты
+├── pg_multixact/     # Мультитранзакции
+├── postmaster.opts   # Параметры запуска postmaster
+├── postmaster.pid    # PID файл
+└── PG_VERSION        # Версия формата данных (например, 14)

@@ -1,0 +1,211 @@
+postgres=# SELECT setting, unit FROM pg_settings WHERE name = 'shared_buffers'; 	-- проверим размер кеша в базе данных 
+ setting | unit
+---------+------
+ 16384   | 8kB
+(1 row)
+postgres=# ALTER SYSTEM SET shared_buffers = 200;					-- уменьшим количество буферов, до 200, для наблюдения. рестартуем кластер после изменений:
+ALTER SYSTEM
+postgres=# \q
+ilya@postgres:~$ sudo -su postgres
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 main restart				-- рестартуем кластер после изменений. Очистит кэш.
+Error: cluster is running from systemd, can only restart it as root. Try instead:
+  sudo systemctl restart postgresql@14-main
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 main stop				-- остановка кластера
+Warning: stopping the cluster using pg_ctlcluster will mark the systemd unit as failed. Consider using systemctl:
+  sudo systemctl stop postgresql@14-main
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 main status				-- статус кластера
+pg_ctl: no server running
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 main start				-- старт кластера
+Warning: the cluster will not be running as a systemd service. Consider using systemctl:
+  sudo systemctl start postgresql@14-main
+postgres=# show shared_buffers;								-- на втором терминале.
+no connection to the server
+The connection to the server was lost. Attempting reset: Succeeded.
+postgres=# \q										-- нужно перезайти, после рестарта кластера
+ilya@postgres:~$ sudo -u postgres psql							-- вход в кластер
+could not change directory to "/home/ilya": Permission denied
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+postgres=# show shared_buffers;								
+ shared_buffers
+----------------
+ 1600kB											-- 1,6 МВ (200*8КБ=1600)
+(1 row)
+												 
+postgres=# CREATE DATABASE buffer_temp;							-- создать БД
+CREATE DATABASE
+postgres=# \c buffer_temp								-- переход в другую ДБ
+You are now connected to database "buffer_temp" as user "postgres".
+buffer_temp=# CREATE TABLE test(i int);							-- создание таблицы test
+CREATE TABLE
+buffer_temp=# INSERT INTO test SELECT s.id FROM generate_series(1,100) AS s(id);	-- сгенерировать случайные 100 значений
+INSERT 0 100
+buffer_temp=# SELECT * FROM test limit 10;						-- посмотреть первый 10 строк из таблицы test
+ i
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+
+
+buffer_temp=# CREATE EXTENSION pg_buffercache; 						-- создадим расширение для просмотра кеша
+CREATE EXTENSION
+buffer_temp=# \dx+									-- какие содержатся функции в "pg_buffercache"
+Objects in extension "pg_buffercache"
+       Object description
+---------------------------------
+ function pg_buffercache_pages()							-- функция доступа к страницам буферного кэша
+ view pg_buffercache
+(2 rows)
+
+      Objects in extension "plpgsql"
+            Object description
+-------------------------------------------
+ function plpgsql_call_handler()
+ function plpgsql_inline_handler(internal)
+ function plpgsql_validator(oid)
+ language plpgsql
+(4 rows)
+
+
+
+buffer_temp=# CREATE VIEW pg_buffercache_v AS						-- создадим представление для просмотра содержимого буферного кеша. "VIEW pg_buffercache_v" имя представления с параметрами.
+SELECT bufferid,
+       (SELECT c.relname FROM pg_class c WHERE  pg_relation_filenode(c.oid) = b.relfilenode ) relname,
+       CASE relforknumber
+         WHEN 0 THEN 'main'
+         WHEN 1 THEN 'fsm'
+         WHEN 2 THEN 'vm'
+       END relfork,
+       relblocknumber,
+       isdirty,
+       usagecount
+FROM   pg_buffercache b
+WHERE  b.relDATABASE IN (    0, (SELECT oid FROM pg_DATABASE WHERE datname = current_database()) )
+AND    b.usagecount is not null;
+CREATE VIEW
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test';			-- просмотр представления
+ bufferid | relname | relfork | relblocknumber | isdirty | usagecount
+----------+---------+---------+----------------+---------+------------
+(0 rows)										-- потому что не выбранны данные
+buffer_temp=# SELECT * FROM test limit 10;						-- сделать выборку данных
+ i
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+buffer_temp=# UPDATE test set i = 2 WHERE i = 1;					-- обновление одной строки
+UPDATE 1
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test';			-- просмотр представления
+ bufferid | relname | relfork | relblocknumber | isdirty | usagecount
+----------+---------+---------+----------------+---------+------------
+      108 | test    | main    |              0 | t       |          2			-- is dirty = t
+(1 row)
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test';			-- увидим грязную страницу
+ bufferid | relname | relfork | relblocknumber | isdirty | usagecount
+----------+---------+---------+----------------+---------+------------
+      108 | test    | main    |              0 | f       |          2			-- is dirty = f, процесс dgwriter сбросил грязную запись
+
+
+
+
+buffer_temp=# SELECT c.relname,								-- даст пищу для размышлений над использованием кеша -- usagecount > 3. Покажет все существующие буферы.
+  count(*) blocks,
+  round( 100.0 * 8192 * count(*) / pg_TABLE_size(c.oid) ) "% of rel",
+  round( 100.0 * 8192 * count(*) FILTER (WHERE b.usagecount > 3) / pg_TABLE_size(c.oid) ) "% hot"
+FROM pg_buffercache b
+  JOIN pg_class c ON pg_relation_filenode(c.oid) = b.relfilenode
+WHERE  b.relDATABASE IN (
+         0, (SELECT oid FROM pg_DATABASE WHERE datname = current_database())
+       )
+AND    b.usagecount is not null
+GROUP BY c.relname, c.oid
+ORDER BY 2 DESC
+LIMIT 10;
+             relname             | blocks | % of rel | % hot				-- системные представления буферов. hot>3, означает, что данные постоянно используются.
+---------------------------------+--------+----------+-------
+ pg_class                        |     13 |       76 |    12
+ pg_operator                     |     11 |       61 |    17
+ pg_proc                         |      9 |        9 |     0
+ pg_depend                       |      8 |       11 |     0
+ pg_proc_oid_index               |      6 |       55 |    18
+ pg_attribute                    |      5 |        8 |     2
+ pg_amop                         |      5 |       45 |     9
+ pg_attribute_relid_attnum_index |      5 |       50 |    20
+ pg_depend_reference_index       |      5 |        9 |     0
+ pg_class_oid_index              |      4 |      100 |    50
+(10 rows)
+
+
+-- сгенерируем значения с текстовыми полями - чтобы занять больше страниц
+buffer_temp=# CREATE TABLE test_text(t text);						-- создадим таблицу с текстом. Текст занимает больше буферов в памяти.
+CREATE TABLE
+buffer_temp=# INSERT INTO test_text SELECT 'строка '||s.id FROM generate_series(1,500) AS s(id);
+INSERT 0 500
+
+SELECT * FROM test_text limit 10;
+SELECT * FROM test_text;
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test_text';			-- после изменений и выборок. Представление "pg_buffercache_v" обогатилось:
+ bufferid |  relname  | relfork | relblocknumber | isdirty | usagecount
+----------+-----------+---------+----------------+---------+------------
+       87 | test_text | main    |              0 | f       |          5
+       89 | test_text | fsm     |              2 | f       |          2
+       90 | test_text | fsm     |              0 | f       |          2
+      122 | test_text | main    |              1 | f       |          5
+      158 | test_text | main    |              2 | f       |          5
+      159 | test_text | main    |              3 | f       |          5
+(6 rows)										-- количество буферов
+
+=================== прогрев кеша ======================================================
+buffer_temp=# \q									--
+ilya@postgres:~$ pg_ctlcluster 14 main restart						--
+Warning: the cluster will not be running as a systemd service. Consider using systemctl:
+  sudo systemctl restart postgresql@14-main
+Error: You must run this program as the cluster owner (postgres) or root
+ilya@postgres:~$ sudo su postgres							--
+[sudo] password for ilya:
+postgres@postgres:/home/ilya$ pg_ctlcluster 14 main restart				-- restart очищает кэш
+Warning: the cluster will not be running as a systemd service. Consider using systemctl:
+  sudo systemctl restart postgresql@14-main
+postgres@postgres:/home/ilya$ psql							-- 
+could not change directory to "/home/ilya": Permission denied
+psql (14.20 (Ubuntu 14.20-0ubuntu0.22.04.1))
+Type "help" for help.
+postgres=# \c buffer_temp								--
+You are now connected to database "buffer_temp" as user "postgres".
+buffer_temp=# CREATE EXTENSION pg_prewarm;						--
+CREATE EXTENSION
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test_text';			--
+ bufferid | relname | relfork | relblocknumber | isdirty | usagecount
+----------+---------+---------+----------------+---------+------------
+(0 rows)
+buffer_temp=# SELECT pg_prewarm('test_text');						-- вызов прогрева для таблицы
+ pg_prewarm
+------------
+          4
+(1 row)
+buffer_temp=# SELECT * FROM pg_buffercache_v WHERE relname='test_text';			-- 
+ bufferid |  relname  | relfork | relblocknumber | isdirty | usagecount
+----------+-----------+---------+----------------+---------+------------
+       58 | test_text | main    |              0 | f       |          1
+       61 | test_text | main    |              1 | f       |          1
+       73 | test_text | main    |              2 | f       |          1
+       91 | test_text | main    |              3 | f       |          1
+(4 rows)

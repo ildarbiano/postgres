@@ -1,0 +1,75 @@
+------------------------------------- полнотекстовый поиск
+SELECT 'a fat cat sat on a mat and ate a fat rat'::tsvector @@ 'cat & rat'::tsquery;
+ ?column? 
+----------
+ t											-- true. Поиск соответствует
+::tsvector										-- подготовленные лексемы. тип данных.
+@@											-- операция поиска (лексемы)
+&											-- оператор
+
+------------------------------------- разница функции to_tsvector и лексемы ::tsvector
+SELECT to_tsvector('fat cats ate fat rats') @@ to_tsquery('fat & rat');
+to_tsvector										-- функция преобразования текста to_tsvector в лексемы ::tsvector
+ ?column? 
+----------
+ t											-- true. Поиск соответствует, потому как функция преобразования to_tsvector('fat cats ate fat rats'), соответствует уже преобразованному to_tsquery('fat & rat')
+ 
+
+------------------------------------- Заметьте, что соответствие не будет обнаружено, если запрос записан как
+SELECT 'fat cats ate fat rats'::tsvector @@ to_tsquery('fat & rat');
+ ?column? 
+----------
+ f											-- false. не преобразованное "'fat cats ate fat rats'::tsvector" НЕ соответствует уже преобразованному to_tsquery('fat & rat') так как слово rats не будет нормализовано. Элементами tsvector являются лексемы, предположительно уже нормализованные, так что rats считается не соответствующим rat.
+
+------------------------------------- можем указывать язык для лексем:
+SELECT to_tsvector('english', 'a fat  cat sat on a mat - it ate a fat rats');		-- функция преобразования текста to_tsvector в лексемы ::tsvector
+
+SELECT to_tsvector('толстая кошка') @@ to_tsquery('толст');
+ ?column? 
+----------
+ f											-- false. НЕ соответствует уже преобразованному to_tsquery.
+SELECT to_tsvector('толстая кошка')
+SELECT to_tsvector('russian','толстая кошка')						-- лучше работает со словами, вычленяя корни слов.
+SELECT to_tsvector('russian','толстая кошка') @@ to_tsquery('толст');
+ ?column? 
+----------
+ t											-- true. Поиск соответствует, потому как функция преобразования to_tsvector, соответствует уже преобразованному to_tsquery.
+
+------------------------------------- по полнотекстовому поиску, пример индекса и запросов:
+drop table if exists test_fts;
+create table test_fts(t text);
+INSERT INTO test_fts VALUES ('лимон'),('лимонад'),('налим'),('толстая кошка'),('толстые кошки'),('кот полосатый'),('худые коты');
+CREATE INDEX idx ON test_fts USING GIN (to_tsvector('russian',t));
+--
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('лимон');
+--
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('лим');
+--
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('кот');
+--
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('кошка');
+--
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('кошк');
+
+------------------------------------- используем язык и при преобразовании шаблона для поиска:
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('russian','кошка');
+
+EXPLAIN
+
+SELECT count(*)
+FROM test_fts
+WHERE to_tsvector('russian',t) @@ to_tsquery('кошк');
+
+------------------------------------- https://www.db-fiddle.com/f/gW1N26Cht89J5ZezCff4dL/3
